@@ -1,0 +1,2843 @@
+---
+title: "The Impact of Policy Design on Willingness to Pay for Ecosystem Services from Prairie Strips"
+author: "Badri Khanal"
+date: "7/06/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#===============================================
+# 1.Packages
+#===============================================
+
+```{r}
+library(gmnl)
+library(mlogit)
+library(plyr)
+library(dplyr)
+library(jtools) 
+library(huxtable) 
+
+library(tidyr)
+library(poLCA)
+library(FactoMineR)
+library("memisc")
+
+
+```
+#===============================================
+# 2.Data Preparations
+#===============================================## 
+```{r}
+
+my_data_final = read.csv(
+"choice_df_final_2_18_22.csv") %>% data.frame()
+
+# re-scaling of number of pollinator data 
+my_data_final$po1 <- dplyr::recode(my_data_final$po1, `2` = 100, `4` = 300,`6` = 500 )
+my_data_final$po2 <- dplyr::recode(my_data_final$po2, `2` = 100, `4` = 300,`6` = 500 )
+my_data_final$po2
+my_data_final$id
+my_data_final$choice
+names(my_data_final)
+
+# some diagnosis from the choices
+# 1. respondents with always status quo 
+
+Choice_diagnosis <- my_data_final %>% 
+  group_by(id) %>% 
+  summarize(mean_choice= mean(choice, na.rm = TRUE))%>% data.table()
+
+Choice_diagnosis2 <- Choice_diagnosis %>% filter(mean_choice==3) # 133/1200=0.1108333
+# 1. Respondents with confidence level
+table(my_data_final$Confidence)
+ #1    2    3    4    5 
+ #204  330 1374 3138 2154
+# 204/(204+330+1374+3138+2154) *100    # 2.83%
+# (204+330)/(204+330+1374+3138+2154) *100 # 7.416667 %
+
+204/7200
+330/7200
+1374/7200
+3138/7200
+2154/7200
+(3138+2154) /7200
+
+# defining socioeconomic variables
+my_data_final <- my_data_final %>%  mutate(
+  Age= 2019-D3,Female = ifelse(D4 == 2, 1, 0), Gender = D4,
+  Male =ifelse(D4==1,1,0),
+  Male2=ifelse(D4==1|D4==3,1,0),
+  College = ifelse(D9 > 5,1,0),Education =D9, Income = D10, 
+  NoCollege = ifelse(D9<6,1,0),
+  Family_size= D6, State_run = ifelse(h_A_B== "A", 1,0),
+  Deg_enrollment = ifelse(h_C_D == "C", 1,0),
+  Highincome = ifelse(D10>3,1,0),
+  Lowincome = ifelse(D10<4,1,0),
+  Known_before = ifelse(before == "yes", 1, 0),
+  LivedInFarm =ifelse(Farmer1==1|Farmer2==1,1,0),
+  EnvEduOrMember =ifelse((Environactive1==1 |Environactive3 ==1),1,0),
+  Confidence = ChExper1, Difficulty =ChExper1, Interesting = ChExper1,
+  Rural= ifelse(D2<4,1,0),HomeOwn =ifelse(D8==1,1,0), HaveChild =ifelse(D7>0,1,0),
+  Age_morethan_60= ifelse((2019-D3)>60,1,0),
+  age_above55 = ifelse((2019 - D3) > 55, 1, 0),
+  age_below55 =ifelse((2019-D3)<56,1,0),
+  Farmer1_combined = ifelse(Farmer1==1 |(Farmer1==2 & (Farmer2 == 1& Farmer3 ==1)) |
+                              (Farmer1==2 & (Farmer2 == 1 & Farmer4 ==1) )|
+                              (Farmer1==2 & (Farmer3 ==1 & Farmer4 ==1)),1,0),
+  Govt_Responsibility =ifelse(ResponsibilityRank1 == 1|ResponsibilityRank1 == 2|
+                                ResponsibilityRank1 == 3|ResponsibilityRank1 == 4,1,0),
+  NGO_Responsibility =ifelse(ResponsibilityRank1 == 9,1,0),
+  state_run_program = ifelse(h_A_B== "A",1,0),
+  ngo_run_program = ifelse(h_A_B =="B",1,0),
+  degraded_land = ifelse(h_C_D== "C",1,0),
+  historical_managed_land = ifelse(h_C_D== "D",1,0),
+  state_degraded = ifelse((h_A_B =="A" & h_C_D =="C"),1,0), #24.66667
+  ngo_degraded = ifelse((h_A_B =="B" & h_C_D =="C"),1,0),#25.25
+  state_historical = ifelse((h_A_B =="A" & h_C_D =="D"),1,0),#25.25
+  ngo_historical = ifelse((h_A_B =="B" & h_C_D =="D"),1,0)) #24.83333
+
+
+my_data_final <- data.frame(my_data_final)
+(my_data_final$ngo_historical)
+summary(my_data_final$Male2)
+
+
+mytable <- table(my_data_final$ngo_historical) # A will be rows, B will be columns
+mytable # print table
+1788/7200  
+count(my_data_final, 'state_historical')
+count(my_data_final, 'ngo_historical')
+count(my_data_final, 'ngo_historical')
+#college_female <- my_data_final %>% ifelse(Female =="1" & College =="1",1)
+```
+
+#===============================================
+# 3. Descriptive Statistics histograms
+#===============================================
+
+```{r}
+library(modelsummary)
+library(gt)
+library(ggplot2)
+library(tidyverse)
+library(styler)
+
+# Group by policy
+
+my_data_final
+
+g <- my_data_final %>%
+  group_by(Gender,h_A_B) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq))
+
+descriptive_data <- my_data_final[,c("Age", "Gender" ,
+  "Education","Income", "Family_size")] 
+
+
+datasummary(
+  All(data.frame(descriptive_data)) 
+  ~ (Mean + SD) + Histogram(Age,bins=2), 
+  data = descriptive_data
+)
+datasummary(
+  All(data.frame(descriptive_data)) 
+  ~  Histogram, 
+  data = descriptive_data
+)
+
+library(dplyr)
+descriptive_data <- descriptive_data %>% mutate(Age_group=cut(Age, breaks=c(18,30, 40, 50, 60,70,80,100), labels=c("18-30","30-40","40-50","50-60","60-70","70-80",">80")),Gender_group=cut(Gender, breaks=c(0,1, 2, 3), labels=c("Male","Female","Others")),Income_group=cut(Income, breaks=c(0,1, 2, 3, 4,5,6), labels=c("<25K","25K-50K","50K-75K","75K-100K","100K-150K",">150K")),Education_group=cut(Education, breaks=c(0,1, 2, 3, 4,5,6,7), labels=c("No High School ","High School","Some College","Tech graduate","Two year College","Four Year College","Advance")))
+
+library(patchwork)
+
+g_age <- ggplot(data = descriptive_data, aes(x =Age_group )) + 
+  geom_histogram(aes(y = ((..count..) / sum(..count..) * 100)),color = "black",
+    fill = "lightblue",
+    size = 1,
+    shape = 2, binwidth = 0.5,stat="count") + ylab("Percentage") + xlab("Age Groups") + ggtitle("Age Groups") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =90,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+# g_edu <-ggplot(data = descriptive_data) + 
+#   geom_histogram(aes(x = Education, y = freq/6),bins=7, binwidth=0.5)+
+#   ggtitle("Education") + theme_classic()
+
+g_edu <-
+  ggplot(data = descriptive_data, aes(x=Education_group)) +  geom_histogram(aes(y =
+ ((..count..) / sum(..count..) * 100)),color = "black",
+    fill = "lightblue",
+    size = 1,
+    shape = 2,stat="count", binwidth = 0.5) + ylab("Percentage") +
+  xlab("Education") + ggtitle("Education") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times", angle=90,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+
+g_gender <-
+  ggplot(data = descriptive_data, aes(x = Gender_group)) +  geom_histogram(aes(y =
+  ((..count..) / sum(..count..) * 100)),color = "black",
+    fill = "lightblue",
+    size = 1,
+    shape = 2,stat="count", binwidth = 0.5) + ylab("Percentage") + xlab("Gender") + ggtitle("Gender") + theme_classic() + 
+  theme(axis.title.x =element_blank(), axis.text.x = element_text(size = 14, family = "Times", angle= 90,vjust = -0.000005)) +
+  theme(
+    plot.margin = unit(c(1, 5, 10, 4), units = "points"),
+    axis.title.y = element_text(
+      face = "bold",
+      vjust = 1.8,
+      size = 14,
+      family = "Times"
+    ),
+    axis.text.y =  element_text(size = 14, family = "Times")
+  )
+
+g_income <- ggplot(data = descriptive_data, aes(x=Income_group)) + geom_histogram(aes(y =
+ ((..count..) / sum(..count..) * 100)),color = "black",
+    fill = "lightblue",
+    size = 1,
+    shape = 2,stat="count", binwidth = 0.5) + ylab("Percentage") +
+  xlab("Income Categories") + ggtitle("Income Groups") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times", angle=90,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+g_age + g_gender+g_edu + g_income
+
+
+
+
+```
+#===============================================
+# 4. Descriptive Statistics Barplot (Figure1 in article)
+#===============================================
+```{r}
+df1 <- read.table(text = "Categories	Source	Group	Percentage
+Income	Population	<25K	17.6
+Income	Population	25-50K	22.6
+Income	Population	50-75K	19.5
+Income	Population	75-100K	14.1
+Income	Population	100-150K	15.8
+Income	Population	>150K	10.5
+Gender	Population	Male	49.3
+Gender	Population	Female	50.7
+Gender	Population	Didn't_disclose	NA
+Age	Population	19-24	12.7
+Age	Population	25-34	16.5
+Age	Population	35-44	16.1
+Age	Population	45-54	14.7
+Age	Population	55-64	17.2
+Age	Population	65+	22.8
+Education	Population	No_High_School	7.8
+Education	Population	High_School	30.8
+Education	Population	Some_College	34.6
+Education	Population	College	26.9
+City_type Population <10K_rural NA
+City_type Population <10K_town NA
+City_type Population 10-50K_city NA
+City_type Population 50-100K_city NA
+City_type Population >100K_city NA
+Knew_before Population Yes NA
+Knew_before Population No NA
+Have_child Population Yes NA
+Have_child Population No NA
+Own_home Population Yes NA
+Own_home Population No NA
+Income	Sample	<25K	19.3
+Income	Sample	25-50K	24.3
+Income	Sample	50-75K	20.1
+Income	Sample	75-100K	14.5
+Income	Sample	100-150K	13.5
+Income	Sample	>150K	8.3
+Gender	Sample	Male	42.1
+Gender	Sample	Female	57.4
+Gender	Sample	Didn't_disclose	0.5
+Age	Sample	19-24	16.7
+Age	Sample	25-34	15.6
+Age	Sample	35-44	15.8
+Age	Sample	45-54	13.3
+Age	Sample	55-64	19.0
+Age	Sample	65+	19.8
+Education	Sample	No_High_School	2.3
+Education	Sample	High_School	20.5
+Education	Sample	Some_College	37.1
+Education	Sample	College	40.1
+City_type Sample <10K_rural 18.7
+City_type Sample <10K_town 23.1
+City_type Sample 10-50K_city 23.0
+City_type Sample 50-100K_city 17.3
+City_type Sample >100K_city 17.9
+Knew_before Sample Yes 18.7
+Knew_before Sample No 81.3
+Have_child Sample Yes 33.25
+Have_child Sample No 67.75
+Own_home Sample Yes 63.67
+Own_home Sample No 36.23",
+                  header = TRUE, stringsAsFactors = FALSE)
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tidyverse)
+library(viridis)
+library(scales)
+
+age_group <- df1 %>% filter(Categories== "Age") 
+Income_group <- df1 %>% filter(Categories== "Income") %>% mutate(
+    Income_Group_f = factor(Group, level = c("<25K", "25-50K", "50-75K","75-100K","100-150K",">150K")))
+
+Gender_group <- df1 %>% filter(Categories== "Gender")
+Edu_group <- df1 %>% filter(Categories== "Education") %>% mutate(
+    Edu_Group_f = factor(Group, level = c( "No_High_School","High_School","Some_College","College")))
+City_group <- df1 %>% filter(Categories== "City_type") %>% mutate(
+    City_Group_f = factor(Group, level = c("<10K_rural", "<10K_town", "10-50K_city","50-100K_city",">100K_city")))
+City_group$Group <- factor(City_group$Group, levels = City_group$Group[order=c("<10K_rural", "<10K_town", "10-50K_city","50-100K_city",">100K_city")])
+Known_group <- df1 %>% filter(Categories== "Knew_before")
+Child_group <- df1 %>% filter(Categories== "Have_child")
+Home_group <- df1 %>% filter(Categories== "Own_home")
+
+cols1 <- c("Population" = "lightgray", "Sample" = "lightblue", "Kansas" = "orange", "South Dakota" = "#ff0080")
+
+
+cols <- c("Population" = "#D55E00", "Sample" = "#009E73", "Kansas" = "orange", "South Dakota" = "#ff0080")
+
+cols2 <- c("Population" = "#F0E442", "Sample" = "#009E73", "Kansas" = "orange", "South Dakota" = "#ff0080")
+
+#"#440154FF" "#443A83FF" "#31688EFF" "#21908CFF" "#35B779FF" "#8FD744FF"
+
+cols3 <- c("white","crossbar")
+
+
+Age_bar <- ggplot(data = age_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) +
+  geom_bar(color="black",
+           stat = "identity",
+           position = position_dodge()) +
+    scale_fill_brewer() +
+  theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.9), vjust=-0.25, color="black") + 
+    theme_classic() + ylab("Percentage") +
+  xlab("Age Categories") + ggtitle("(a) Age Groups") +
+    theme(plot.title = element_text(size = 20, face = "bold"))+ theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times", angle=20,vjust =0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 13, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Age_bar
+
+Income_bar <- ggplot(data = Income_group,aes(x = Income_Group_f,
+               y = Percentage,
+               fill = Source,
+               color = Source)) +geom_bar(color="black",
+           stat = "identity",
+           position = position_dodge()) +scale_fill_brewer() +
+  theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.9), vjust=-0.25,color="black") + 
+    theme_classic() + ylab("Percentage") +
+  xlab("Income Categories") + ggtitle("(d) Income Groups") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times", angle=20,vjust =0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 13, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Income_bar
+
+
+Edu_bar <- ggplot(data = Edu_group, aes(x = Edu_Group_f,
+               y = Percentage,
+               fill = Source,
+               color = Source)) +geom_bar(color="black",
+           stat = "identity",
+           position = position_dodge(),width=0.6) +scale_fill_brewer() +
+  theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.6), vjust=-0.25,color="black") + 
+    theme_classic() + ylab("Percentage") +
+  xlab("Education Categories") + ggtitle("(c) Education") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust =0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+#+scale_x_discrete(
+                     #labels = c("Ione","SItwo","SIone"."done"))
+Edu_bar
+
+Gender_bar <- ggplot(data = Gender_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) + geom_bar(color="black",
+           stat = "identity",
+           position = 'dodge',width=0.5) +
+   theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.5), vjust=-0.25,color="black")  +scale_fill_brewer() +
+    theme_classic() + ylab("Percentage") +
+  xlab("gender Categories") + ggtitle("(b) Gender") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust = 0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Gender_bar
+
+
+
+City_bar <- ggplot(data = City_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) + geom_bar(color="black",
+           stat = "identity",
+           position = 'dodge',width=0.7) +
+   theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.7), vjust=-0.25,color="black")  +scale_fill_brewer() +
+    theme_classic() + ylab("Percentage") +
+  xlab("gender Categories") + ggtitle("(e) City type") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust = 0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+City_bar
+
+Known_bar <- ggplot(data = Known_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) + geom_bar(color="black",
+           stat = "identity",
+           position = 'dodge',width=0.35) +
+   theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.35), vjust=-0.25,color="black")  +scale_fill_brewer() +
+    theme_classic() + ylab("Percentage") +
+  xlab("gender Categories") + ggtitle("(f) Knew before") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust = 0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Known_bar
+
+Child_bar <- ggplot(data = Child_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) + geom_bar(color="black",
+           stat = "identity",
+           position = 'dodge',width=0.35) +
+   theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.35), vjust=-0.25,color="black")  +scale_fill_brewer() +
+    theme_classic() + ylab("Percentage") +
+  xlab("gender Categories") + ggtitle("(g) Have Child") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust = 0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Child_bar
+
+Home_bar <- ggplot(data = Home_group,aes(x = Group,
+               y = Percentage,
+               fill = Source,
+               color = Source)) + geom_bar(color="black",
+           stat = "identity",
+           position = 'dodge',width=0.35) +
+   theme(legend.title=element_blank()) + 
+    geom_text(aes(label=Percentage),size=4, position=position_dodge(width=0.35), vjust=-0.25,color="black")  +scale_fill_brewer() +
+    theme_classic() + ylab("Percentage") +
+  xlab("gender Categories") + ggtitle("(h) Home Own") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 13, family = "Times", angle=20,vjust = 0.5,hjust=0.3)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times")) + theme(legend.title=element_blank(),legend.position = "bottom", legend.text = element_text(
+      size = 12,
+      family = "Times",face= "bold") )
+
+Home_bar
+
+library(patchwork)
+all_graphs <- Age_bar + Gender_bar + Edu_bar + Income_bar
+all_graphs
+ggsave()
+
+library(ggpubr)
+ggarrange(Age_bar, Gender_bar, Edu_bar, Income_bar, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+
+library(ggpubr)
+ggarrange(Age_bar, Gender_bar, Edu_bar, Income_bar, City_bar,Known_bar,Child_bar,Home_bar, ncol=3, nrow=3, common.legend = TRUE, legend="bottom")
+
+
+```
+
+
+#===============================================
+# 5.create mlogit data
+#===============================================
+
+```{R}
+names(my_data_final)
+my_data_final <- my_data_final %>% mutate(Age_group=cut(Age, breaks=c(18,30, 40, 50, 60,70,80,100), labels=c("18-30","30-40","40-50","50-60","60-70","70-80",">80")),Gender_group=cut(Gender, breaks=c(0,1, 2, 3), labels=c("Male","Female","Others")),Income_group=cut(Income, breaks=c(0,1, 2, 3, 4,5,6), labels=c("<25K","25K-50K","50K-75K","75K-100K","100K-150K",">150K")),Education_group=cut(Education, breaks=c(0,1, 2, 3, 4,5,6,7), labels=c("No High School ","High School","Some College","Tech graduate","Two year College","Four Year College","Advance")),age_above55_1 =age_above55*100,College_1=College*100,Female_1=Female*100,Highincome_1=Highincome*100)
+head(my_data_final)
+dim(my_data_final)
+
+my_data_final <- my_data_final %>% mutate(id= ï..id)
+
+# data_WTP_space11 <- mlogit.data(my_data_final, id.var = "id", choice = "choice",
+#                                varying = 73:87, shape = "wide", sep = "", opposite = c("pr"))
+data_WTP_space1 <- mlogit.data(my_data_final, id.var = "id", choice = "choice",
+                               varying = 73:87, shape = "wide", sep = "",opposite = c("pr"))
+
+
+#opposite = c(" ")
+data_WTP_space1$pr
+data_WTP_space1$nu
+#, opposite = c(" ") 
+data_WTP_space1$asc1 <- as.numeric(data_WTP_space1$alt == 1)
+data_WTP_space1$asc2 <- as.numeric(data_WTP_space1$alt == 2)
+data_WTP_space1$OptOut <- as.numeric(data_WTP_space1$alt == 3)
+data_WTP_space1$ASC <- as.numeric(data_WTP_space1$alt == 1|data_WTP_space1$alt == 2)
+data_WTP_space1$AGE55plus <- ifelse(data_WTP_space1$age_above55==1,1,0) 
+
+data_WTP_space1$state_degraded
+data_WTP_space1$state_historical
+
+# Data for not confident respondent (5= strongly confident, --1 strongly not confident)
+my_data_final2 <- subset(my_data_final,my_data_final$Confidence >3)%>% data.frame()
+
+data_WTP_space2 <- mlogit.data(my_data_final2, id.var = "id", choice = "choice",
+                               varying = 73:87, shape = "wide", sep = "",opposite = c("pr"))
+
+
+#opposite = c(" ")
+data_WTP_space2$pr
+data_WTP_space2$nu
+#, opposite = c(" ") 
+data_WTP_space2$asc1 <- as.numeric(data_WTP_space2$alt == 1)
+data_WTP_space2$asc2 <- as.numeric(data_WTP_space2$alt == 2)
+data_WTP_space2$OptOut <- as.numeric(data_WTP_space2$alt == 3)
+data_WTP_space2$ASC <- as.numeric(data_WTP_space2$alt == 1|data_WTP_space2$alt == 2)
+data_WTP_space2$AGE55plus <- ifelse(data_WTP_space2$age_above55==1,1,0) 
+
+data_WTP_space2$state_degraded
+data_WTP_space2$state_historical
+
+
+
+```
+
+
+#===============================================
+# 6A.Attribute and charecteristics interaction for full sample
+#===============================================
+```{r}
+
+
+## indi
+###########################################################################################
+data_WTP_space1$nu_above55 <- as.numeric(data_WTP_space1$nu* data_WTP_space1$age_above55)
+data_WTP_space1$nu_female <- as.numeric(data_WTP_space1$nu * data_WTP_space1$Female)
+data_WTP_space1$nu_college <- as.numeric(data_WTP_space1$nu * data_WTP_space1$College)
+data_WTP_space1$nu_highincome <- as.numeric(data_WTP_space1$nu * data_WTP_space1$Highincome)
+
+
+data_WTP_space1$se_above55 <- as.numeric(data_WTP_space1$se * data_WTP_space1$age_above55)
+data_WTP_space1$se_female <- as.numeric(data_WTP_space1$se * data_WTP_space1$Female)
+data_WTP_space1$se_college <- as.numeric(data_WTP_space1$se * data_WTP_space1$College)
+data_WTP_space1$se_highincome <- as.numeric(data_WTP_space1$se * data_WTP_space1$Highincome)
+
+
+data_WTP_space1$po_above55 <- as.numeric(data_WTP_space1$po * data_WTP_space1$age_above55)
+data_WTP_space1$po_female <- as.numeric(data_WTP_space1$po * data_WTP_space1$Female)
+data_WTP_space1$po_college <- as.numeric(data_WTP_space1$po * data_WTP_space1$College)
+data_WTP_space1$po_highincome <- as.numeric(data_WTP_space1$po * data_WTP_space1$Highincome)
+
+
+data_WTP_space1$ph_above55 <- as.numeric(data_WTP_space1$ph * data_WTP_space1$age_above55)
+data_WTP_space1$ph_female <- as.numeric(data_WTP_space1$ph * data_WTP_space1$Female)
+data_WTP_space1$ph_college <- as.numeric(data_WTP_space1$ph * data_WTP_space1$College)
+data_WTP_space1$ph_highincome <- as.numeric(data_WTP_space1$ph * data_WTP_space1$Highincome)
+
+
+data_WTP_space1$const_above55 <- as.numeric(data_WTP_space1$ASC * data_WTP_space1$age_above55)
+data_WTP_space1$const_female <- as.numeric(data_WTP_space1$ASC * data_WTP_space1$Female)
+data_WTP_space1$const_college <- as.numeric(data_WTP_space1$ASC * data_WTP_space1$College)
+data_WTP_space1$const_highincome <- as.numeric(data_WTP_space1$ASC * data_WTP_space1$Highincome)
+
+```
+
+
+#===============================================
+# 6B. Attribute and characteristics interaction for confident sample
+#===============================================
+```{r}
+data_WTP_space2$nu_above55 <- as.numeric(data_WTP_space2$nu * data_WTP_space2$age_above55)
+data_WTP_space2$nu_female <- as.numeric(data_WTP_space2$nu * data_WTP_space2$Female)
+data_WTP_space2$nu_college <- as.numeric(data_WTP_space2$nu * data_WTP_space2$College)
+data_WTP_space2$nu_highincome <- as.numeric(data_WTP_space2$nu * data_WTP_space2$Highincome)
+
+data_WTP_space2$se_above55 <- as.numeric(data_WTP_space2$se * data_WTP_space2$age_above55)
+data_WTP_space2$se_female <- as.numeric(data_WTP_space2$se * data_WTP_space2$Female)
+data_WTP_space2$se_college <- as.numeric(data_WTP_space2$se * data_WTP_space2$College)
+data_WTP_space2$se_highincome <- as.numeric(data_WTP_space2$se * data_WTP_space2$Highincome)
+
+data_WTP_space2$po_above55 <- as.numeric(data_WTP_space2$po * data_WTP_space2$age_above55)
+data_WTP_space2$po_female <- as.numeric(data_WTP_space2$po * data_WTP_space2$Female)
+data_WTP_space2$po_college <- as.numeric(data_WTP_space2$po * data_WTP_space2$College)
+data_WTP_space2$po_highincome <- as.numeric(data_WTP_space2$po * data_WTP_space2$Highincome)
+
+data_WTP_space2$ph_above55 <- as.numeric(data_WTP_space2$ph * data_WTP_space2$age_above55)
+data_WTP_space2$ph_female <- as.numeric(data_WTP_space2$ph * data_WTP_space2$Female)
+data_WTP_space2$ph_college <- as.numeric(data_WTP_space2$ph * data_WTP_space2$College)
+data_WTP_space2$ph_highincome <- as.numeric(data_WTP_space2$ph * data_WTP_space2$Highincome)
+
+data_WTP_space2$const_above55 <- as.numeric(data_WTP_space2$ASC * data_WTP_space2$age_above55)
+data_WTP_space2$const_female <- as.numeric(data_WTP_space2$ASC * data_WTP_space2$Female)
+data_WTP_space2$const_college <- as.numeric(data_WTP_space2$ASC * data_WTP_space2$College)
+data_WTP_space2$const_highincome <- as.numeric(data_WTP_space2$ASC * data_WTP_space2$Highincome)
+
+
+```
+
+
+#==========================
+# 7. Final Models Estimates (Table1 &Appendix for MNL model)
+#=====================
+```{r}
+
+MNL_esattributes_only_model<- gmnl(
+  choice ~ pr + nu + se + po  + ph + ASC | 0 | 0 | 0 | 0,
+  data = data_WTP_space1,
+  model = 'mnl',
+  #method="bfgs",
+  print.level=2,
+  R = 100)
+AIC(MNL_esattributes_only_model)
+BIC(MNL_esattributes_only_model)
+
+summary(MNL_esattributes_only_model)
+wtp.gmnl(MNL_esattributes_only_model, wrt="pr")
+
+
+
+start11 <- c(1,0,0,0,0,0,0,-3)
+M1_mnl1 <- mlogit( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome|0 ,data = data_WTP_space1,
+                   alt.subset = c(3,1),
+  model = "mnl",
+  R = 1,
+  method="bhhh",
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500
+ )
+
+summary(M1_mnl1)
+
+save(M1_mnl1,file= "M1_mnl1.rdata")
+
+M1_mnl2 <- mlogit( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome|0 ,data = data_WTP_space1,
+                   alt.subset = c(2,3),
+  model = "mnl",
+  R = 1,
+  method="bhhh",
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500
+ )
+
+summary(M1_mnl2)
+
+M1_mnl3 <- mlogit( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome|0 ,data = data_WTP_space1,
+                    alt.subset = c(1,2),
+  model = "mnl",
+  R = 1,
+  method="bhhh",
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500
+ )
+
+summary(M1_mnl3)
+
+save(M1_mnl1,file= "M1_mnl1.rdata")
+save(M1_mnl2,file= "M1_mnl2.rdata")
+save(M1_mnl3,file= "M1_mnl3.rdata")
+
+hmftest(M1_mnl1,M1_mnl2)
+hmftest(M1_mnl1,M1_mnl3)
+hmftest(M1_mnl2,M1_mnl3)
+
+#=============================
+# Models all estimated for paper
+# ================================
+
+
+start_mnl1 <- c(1,0.9,-0.05,0.04,-0.06,66,0.3,-0.5,0.09,0.17,0.18,0.03,0.11,0.02,0.04,-0.005,0.007,0.01,0.04,0.03,0.05,-0.03,7.03,42.85,2,-8,0,-3)
+
+Model1_MNL <- gmnl( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome|0|0|0|1 ,data = data_WTP_space1,
+  model = "smnl",
+  R = 1,
+  fixed = c(TRUE, rep(FALSE,25),TRUE,FALSE),
+ # panel = TRUE,
+  #init.gamma = 0,
+ start = start_mnl1,
+ # hgamma = "direct", # 'direct'= gamma [-inf,+inf], indirect gamma <- [0,1]
+  method="bhhh",
+ #method = "bfgs",
+# subset = c(1:3000),
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500,
+ typeR = TRUE,
+  notscale = c(0,rep(0,24),0),
+   haltons = list("primes" = c(2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97), "drop" = rep(97, 25))
+ )
+
+summary(Model1_MNL)
+
+
+
+save(Model1_MNL,file="Model1_MNL.rdata")
+
+start_conf <- c(1.000000000,0.899707813,-0.050688175,0.049032582,-0.068351431,66.129454362 ,0.298727986,-0.497429151, 0.096457557,0.177094273, 0.183981341, 0.037274983, 0.110442597, 0.027831137, 0.046140956,-0.005611351, 0.007895872, 0.010514645 ,0.044415095, 0.038314679, 0.051803613, 
+  -0.032783232,-7.031067044,42.857309501 ,2.894477072,-8.089847793,-2.864771133 ,0.259882835,-0.253392850, 0.682292893 , 0.131969799, 0.047594221, 0.354799857 
+, 104.843713612, 0.828161185, 0.143205384 ,0.452234933, 0.983897640, 0.297617092,0.023320561, 0.176836349, 0.320310533,0.035100002, 0.070445325, 0.079682374,0.003224953, 0.213889704, 0.142217503 ,0.047062051, 0.044808190,31.753531958 , 64.941444178,69.547865829,87.315295809 ,              2.900000000, -0.650000000 )
+
+GMNL_Full_Sample_model <- gmnl( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome| 0 | 0 | 0 |degraded_land +ngo_run_program ,data = data_WTP_space1,
+  model = 'gmnl',
+  R = 1025,
+  fixed = c(TRUE, rep(FALSE,54),FALSE),
+  panel = TRUE,
+  #init.gamma = 0,
+ start = start_conf,
+  hgamma = "direct", # 'direct'= gamma [-inf,+inf], indirect gamma <- [0,1]
+  method="bhhh",
+ #method = "bfgs",
+# subset = c(1:3000),
+  ranp = c(
+    nu = "n",
+    se = "n",
+    po = "n",
+    ph = "n",
+    ASC = "n",
+    nu_above55 = "n",
+    nu_female = "n",
+    nu_college ="n",
+    nu_highincome ="n",
+    se_above55 = "n",
+    se_female = "n",
+    se_college ="n",
+    se_highincome ="n",
+    po_above55 = "n",
+    po_female = "n",
+    po_college ="n",
+    po_highincome ="n",
+    ph_above55 = "n",
+    ph_female = "n",
+    ph_college ="n",
+    ph_highincome ="n",
+    const_above55 = "n",
+    const_female = "n",
+    const_college ="n",
+    const_highincome ="n"),
+  correlation = FALSE,
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500,
+ typeR = TRUE,
+  notscale = c(0,rep(0,24),0),
+   haltons = list("primes" = c(2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97), "drop" = rep(97, 25))
+ )
+
+summary(GMNL_Full_Sample_model)
+
+save(GMNL_Full_Sample_model,file="GMNL_Full_Sample_model.rdata")
+
+
+# only strongly confident subset
+coef_no_corr2 <- coef(GMNL_Full_Sample_model)
+
+start_conf3 <- c(1,coef_no_corr2[1:53],2.9,-0.065)
+
+GMNL_Final_conf_sample <- gmnl( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome| 0 | 0 | 0 |degraded_land +ngo_run_program ,data = data_WTP_space2,
+  model = 'gmnl',
+  R = 1011,
+  fixed = c(TRUE, rep(FALSE,54),FALSE),
+  panel = TRUE,
+  #init.gamma = 0,
+ start = start_conf3,
+  hgamma = "direct", # 'direct'= gamma [-inf,+inf], indirect gamma <- [0,1]
+  method="bhhh",
+ #method = "bfgs",
+# subset = c(1:3000),
+  ranp = c(
+    nu = "n",
+    se = "n",
+    po = "n",
+    ph = "n",
+    ASC = "n",
+    nu_above55 = "n",
+    nu_female = "n",
+    nu_college ="n",
+    nu_highincome ="n",
+    se_above55 = "n",
+    se_female = "n",
+    se_college ="n",
+    se_highincome ="n",
+    po_above55 = "n",
+    po_female = "n",
+    po_college ="n",
+    po_highincome ="n",
+    ph_above55 = "n",
+    ph_female = "n",
+    ph_college ="n",
+    ph_highincome ="n",
+    const_above55 = "n",
+    const_female = "n",
+    const_college ="n",
+    const_highincome ="n"),
+  correlation = FALSE,
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500,
+ typeR = TRUE,
+  notscale = c(0,rep(0,24),0),
+   haltons = list("primes" = c(2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97), "drop" = rep(97, 25))
+ )
+
+summary(GMNL_Final_conf_sample)
+
+save(GMNL_Final_conf_sample,file="GMNL_Final_conf_sample.rdata")
+
+
+psudo_r_squared_mnl = 1- 6996.7/7910.01
+psudo_r_squared_gmnl = 1- 5381.9/7910.01
+
+lrtest(GMNL_Full_Sample_model,Model1_MNL)
+AIC(GMNL_Full_Sample_model)
+BIC(GMNL_Full_Sample_model)
+AIC(Model1_MNL)
+BIC(Model1_MNL)
+
+AIC(Model1_MNL)
+hmftest(Model1_MNL)
+```
+
+#============================
+# 8. Full sample model post estimation (Table 2 and Table 3, Figure 2 and Appedix figures)
+# ====================================
+```{r}
+
+summary(GMNL_Full_Sample_model)
+
+##
+
+var_list <- c("nu","se","po","ph","ASC",  "nu_above55" , "nu_female" , "nu_college" , "nu_highincome" ,"se_above55" , "se_female" ,"se_college" ,
+    "se_highincome" ,"po_above55" ,"po_female" ,"po_college" ,
+    "po_highincome" ,"ph_above55" ,"ph_female" ,"ph_college" ,
+    "ph_highincome" ,"const_above55" ,"const_female" , "const_college" ,"const_highincome"  )
+
+id_list <- data_WTP_space1$id %>% unique() 
+length(id_list)
+
+
+#GMNL_scale_model_final <- GMNL_scale_model_10
+(coef_data<- effect.gmnl(GMNL_Full_Sample_model, par = var_list, effect = "ce")[[1]] %>% data.frame()%>% mutate(id=id_list))
+
+summary(coef_data)
+
+
+summary(coef_data)
+
+coefs_all <- GMNL_Full_Sample_model$coefficients
+
+summary(coef_data)
+
+#<!---------------------------------->
+## create unique charecter and policy values
+#<!---------------------------------->
+
+data_frame_WTP <- data_WTP_space1 %>% data.frame()
+distinct_data <- dplyr::distinct(data_frame_WTP,id, .keep_all =TRUE) %>% data.frame()
+
+distinct_data <- distinct_data %>% mutate(distinct_data, STATE_DEG =distinct_data$state_deg, STATE_HIST =distinct_data$state_hist, NGO_DEG =distinct_data$ngo_deg, NGO_HIST=distinct_data$ngo_hist, AGE= distinct_data$Age,FEMALE= distinct_data$Female, HIGHINCOME= distinct_data$Highincome, COLLEGE= distinct_data$College, AGEABOVE55= distinct_data$age_above55,STATE_RUN=distinct_data$State_run,NGO_RUN=ngo_run_program, DEG_LAND = degraded_land,HIST_LAND =historical_managed_land  )
+
+distinct_data2 <- dplyr::select(distinct_data,id,STATE_DEG,STATE_HIST,NGO_DEG,NGO_HIST,AGE, FEMALE, HIGHINCOME, COLLEGE, AGEABOVE55,NoCollege, Lowincome,Male, age_below55,Male2,STATE_RUN, NGO_RUN,STATE_RUN, DEG_LAND,HIST_LAND) %>% data.frame()
+dim(distinct_data2)
+
+library(data.table)
+  
+  
+final_coefs <- dplyr::left_join(coef_data,distinct_data2 , by = 'id') %>% data.frame() %>% data.table()
+class(final_coefs)
+names(final_coefs)
+
+(prcoef_All <-
+  -exp(
+    rep(coef(GMNL_Full_Sample_model)["het.(Intercept)"],1200)
+    +
+      rep(coef(GMNL_Full_Sample_model)["het.degraded_land"],1200) *distinct_data2$DEG_LAND + rep(coef(GMNL_Full_Sample_model)["het.ngo_run_program"],1200)*distinct_data2$NGO_RUN))
+
+final_coefs1 <- cbind(final_coefs[,1:25]/-prcoef_All,final_coefs[,26:44])
+
+
+final_coefs2 <- final_coefs1[, `:=`(NU = nu + nu_above55 *AGEABOVE55 + nu_female *FEMALE + nu_college *COLLEGE +nu_highincome*HIGHINCOME,SE = se + se_above55 *AGEABOVE55 + se_female *FEMALE + se_college *COLLEGE +se_highincome*HIGHINCOME,PO = po + po_above55 *AGEABOVE55 + po_female *FEMALE + po_college *COLLEGE +po_highincome*HIGHINCOME,PH = ph + ph_above55 *AGEABOVE55 + ph_female *FEMALE + ph_college *COLLEGE +ph_highincome*HIGHINCOME,ASC1 = ASC + const_above55 *AGEABOVE55 + const_female *FEMALE + const_college *COLLEGE +const_highincome*HIGHINCOME )]
+names(final_coefs2)
+final_coefs2$NU
+
+summary(final_coefs2$TOTAL_WTP)
+
+final_coefs2 <- final_coefs2[, ':='(TOTAL_WTP= NU*75 +SE*95 + PO*300 + PH*100 + ASC1, NU_WTP =NU*75,SE_WTP=SE*95,PO_WTP=PO*300,PH_WTP=PH*100)]
+names(final_coefs2)
+final_coefs2$TOTAL_WTP
+summary(final_coefs2$TOTAL_WTP)
+
+(DL_data1 = filter(final_coefs2,final_coefs2$DEG_LAND==1))
+(HL_data1 = filter(final_coefs2,final_coefs2$HIST_LAND ==1))
+(NR_data1 = filter(final_coefs2,final_coefs2$NGO_RUN ==1))
+(SR_data1 = filter(final_coefs2,final_coefs2$STATE_RUN ==1))
+
+summary(DL_data1$TOTAL_WTP)
+summary(HL_data1$TOTAL_WTP)
+summary(NR_data1$TOTAL_WTP)
+summary(SR_data1$TOTAL_WTP)
+
+a<- c(1,2,3)
+b <- c(10,11,12)
+c <- c(10,101,102)
+d <- c("yes","no","no")
+
+datacheck<- cbind(a,b,c,d) %>% data.frame()
+data111 <- filter(datacheck,datacheck$d=="yes")
+
+
+
+(col <- DL_data1 %>%
+  group_by(HIGHINCOME) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+dim(data_WTP_space1)
+
+( age <- my_data_final %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(f <- DL_data1 %>%
+  group_by(Female) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(inc <- DL_data1 %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+head(as.data.frame(g))
+
+(g <- DL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- HL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- NR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- SR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+library("plyr")
+count(DL_data1, 'COLLEGE','FEMALE')
+
+library(tidyverse)
+library(Rmisc)
+
+# Nu coefficients
+DL_NU <- CI(DL_data1$NU)
+HL_NU <- CI(HL_data1$NU)
+NR_NU <- CI(NR_data1$NU)
+SR_NU <- CI(SR_data1$NU)
+
+cbind(DL_NU[2],HL_NU[2] ,NR_NU[2] ,SR_NU[2] )
+
+paste("[",round(DL_NU[3],3),",",round(DL_NU[1],3),"]","&","[",round(HL_NU[3],3),",",round(HL_NU[1],3),"]","&","[",round(NR_NU[3],3) ,",",round(NR_NU[1],3),"]","&","[",round(SR_NU[3],3),",",round(SR_NU[1],3),"]" )
+
+DL_NU_WTP <- CI(DL_data1$NU_WTP)
+HL_NU_WTP <- CI(HL_data1$NU_WTP)
+NR_NU_WTP <- CI(NR_data1$NU_WTP)
+SR_NU_WTP <- CI(SR_data1$NU_WTP)
+
+paste(round(DL_NU_WTP[2],2),'&',round(HL_NU_WTP[2],2) ,'&',round(NR_NU_WTP[2],2),'&',round(SR_NU_WTP[2],2) )
+
+paste("[",round(DL_NU_WTP[3],2),",",round(DL_NU_WTP[1],2),"]","&","[",round(HL_NU_WTP[3],2),",",round(HL_NU_WTP[1],2),"]","&","[",round(NR_NU_WTP[3],2) ,",",round(NR_NU_WTP[1],2),"]","&","[",round(SR_NU_WTP[3],2),",",round(SR_NU_WTP[1],2),"]" )
+
+
+# Se coefficients
+
+DL_SE <- CI(DL_data1$SE)
+HL_SE <- CI(HL_data1$SE)
+NR_SE <- CI(NR_data1$SE)
+SR_SE <- CI(SR_data1$SE)
+
+cbind(DL_SE[2],HL_SE[2] ,NR_SE[2] ,SR_SE[2] )
+paste("(",round(DL_SE[3],3),",",round(DL_SE[1],3),")","&","(",round(HL_SE[3],3),",",round(HL_SE[1],3),")","&","(",round(NR_SE[3],3) ,",",round(NR_SE[1],3),")","&","(",round(SR_SE[3],3),",",round(SR_SE[1],3),")" )
+
+
+DL_SE_WTP <- CI(DL_data1$SE_WTP)
+HL_SE_WTP <- CI(HL_data1$SE_WTP)
+NR_SE_WTP <- CI(NR_data1$SE_WTP)
+SR_SE_WTP <- CI(SR_data1$SE_WTP)
+
+paste(round(DL_SE_WTP[2],2),'&',round(HL_SE_WTP[2],2) ,'&',round(NR_SE_WTP[2],2),'&',round(SR_SE_WTP[2],2) )
+
+paste("[",round(DL_SE_WTP[3],2),",",round(DL_SE_WTP[1],2),"]","&","[",round(HL_SE_WTP[3],2),",",round(HL_SE_WTP[1],2),"]","&","[",round(NR_SE_WTP[3],2) ,",",round(NR_SE_WTP[1],2),"]","&","[",round(SR_SE_WTP[3],2),",",round(SR_SE_WTP[1],2),"]" )
+
+
+# po coefficients
+
+DL_PO <- CI(DL_data1$PO)
+HL_PO <- CI(HL_data1$PO)
+NR_PO <- CI(NR_data1$PO)
+SR_PO <- CI(SR_data1$PO)
+
+cbind(DL_PO[2],HL_PO[2] ,NR_PO[2] ,SR_PO[2] )
+
+paste("(",round(DL_PO[3],3),",",round(DL_PO[1],3),")","&","(",round(HL_PO[3],3),",",round(HL_PO[1],3),")","&","(",round(NR_PO[3],3) ,",",round(NR_PO[1],3),")","&","(",round(SR_PO[3],3),",",round(SR_PO[1],3),")" )
+
+DL_PO_WTP <- CI(DL_data1$PO_WTP)
+HL_PO_WTP <- CI(HL_data1$PO_WTP)
+NR_PO_WTP <- CI(NR_data1$PO_WTP)
+SR_PO_WTP <- CI(SR_data1$PO_WTP)
+
+paste(round(DL_PO_WTP[2],2),'&',round(HL_PO_WTP[2],2) ,'&',round(NR_PO_WTP[2],2),'&',round(SR_PO_WTP[2],2) )
+
+paste("[",round(DL_PO_WTP[3],2),",",round(DL_PO_WTP[1],2),"]","&","[",round(HL_PO_WTP[3],2),",",round(HL_PO_WTP[1],2),"]","&","[",round(NR_PO_WTP[3],2) ,",",round(NR_PO_WTP[1],2),"]","&","[",round(SR_PO_WTP[3],2),",",round(SR_PO_WTP[1],2),"]" )
+
+
+# Ph coeficcients
+DL_PH <- CI(DL_data1$PH)
+HL_PH <- CI(HL_data1$PH)
+NR_PH <- CI(NR_data1$PH)
+SR_PH <- CI(SR_data1$PH)
+
+cbind(DL_PH[2],HL_PH[2] ,NR_PH[2] ,SR_PH[2] )
+paste("(",round(DL_PH[3],3),",",round(DL_PH[1],3),")","&","(",round(HL_PH[3],3),",",round(HL_PH[1],3),")","&","(",round(NR_PH[3],3) ,",",round(NR_PH[1],3),")","&","(",round(SR_PH[3],3),",",round(SR_PH[1],3),")" )
+
+
+DL_PH_WTP <- CI(DL_data1$PH_WTP)
+HL_PH_WTP <- CI(HL_data1$PH_WTP)
+NR_PH_WTP <- CI(NR_data1$PH_WTP)
+SR_PH_WTP <- CI(SR_data1$PH_WTP)
+
+paste(round(DL_PH_WTP[2],2),'&',round(HL_PH_WTP[2],2) ,'&',round(NR_PH_WTP[2],2),'&',round(SR_PH_WTP[2],2) )
+
+paste("[",round(DL_PH_WTP[3],2),",",round(DL_PH_WTP[1],2),"]","&","[",round(HL_PH_WTP[3],2),",",round(HL_PH_WTP[1],2),"]","&","[",round(NR_PH_WTP[3],2) ,",",round(NR_PH_WTP[1],2),"]","&","[",round(SR_PH_WTP[3],2),",",round(SR_PH_WTP[1],2),"]" )
+
+
+
+# ASC coefficients
+
+DL_ASC <- CI(DL_data1$ASC1)
+HL_ASC <- CI(HL_data1$ASC1)
+NR_ASC <- CI(NR_data1$ASC1)
+SR_ASC <- CI(SR_data1$ASC1)
+
+cbind(DL_ASC[2],HL_ASC[2] ,NR_ASC[2] ,SR_ASC[2] )
+cbind(DL_ASC[3],DL_ASC[1],HL_ASC[3] ,HL_ASC[1],NR_ASC[3] ,NR_ASC[1],SR_ASC[3],SR_ASC[1] )
+# Overall WTP coefficietns
+DL_WTP <- CI(DL_data1$TOTAL_WTP)
+HL_WTP <- CI(HL_data1$TOTAL_WTP)
+NR_WTP <- CI(NR_data1$TOTAL_WTP)
+SR_WTP<- CI(SR_data1$TOTAL_WTP )
+
+cbind(DL_ALL[2],HL_ALL[2] ,NR_ALL[2] ,SR_ALL[2] )
+cbind(DL_WTP[2],HL_WTP[2] ,NR_WTP[2] ,SR_WTP[2] )
+
+paste(round(DL_WTP[2],3),"&",round(HL_WTP[2],3),"&",round(NR_WTP[2],3) ,"&",round(SR_WTP[2],3))
+
+paste("[",round(DL_WTP[3],2),",",round(DL_WTP[1],2),"]","&","[",round(HL_WTP[3],2),",",round(HL_WTP[1],2),"]","&","[",round(NR_WTP[3],2) ,",",round(NR_WTP[1],2),"]","&","[",round(SR_WTP[3],2),",",round(SR_WTP[1],2),"]" )
+
+cbind(DL_WTP[3],DL_WTP[1],HL_WTP[3] ,HL_WTP[1],NR_WTP[3] ,NR_WTP[1],SR_WTP[3],SR_WTP[1] )
+
+All_data <- cbind (DL_ALL= (DL_data1$NU*75 +DL_data1$SE*90 + DL_data1$PO*300 + DL_data1$PH*100 + DL_data1$ASC1 ),
+HL_ALL = (HL_data1$NU*75 +HL_data1$SE*90 + HL_data1$PO*300 + HL_data1$PH*100 + HL_data1$ASC1),
+NR_ALL = (NR_data1$NU*75 +NR_data1$SE*90 + NR_data1$PO*300 + NR_data1$PH*100 + NR_data1$ASC1),
+SR_ALL = (SR_data1$NU*75 +SR_data1$SE*90 + SR_data1$PO*300 + SR_data1$PH*100 + SR_data1$ASC1)) %>% data.frame()
+
+summary(All_data)
+
+dim(final_coefs)
+
+cbind(mean(DL_data1$NU*75),mean(HL_data1$NU*75),mean(NR_data1$NU*75),mean(SR_data1$NU*75))
+cbind(mean(DL_data1$SE*90),mean(HL_data1$SE*90),mean(NR_data1$SE*90),mean(SR_data1$SE*90))
+
+cbind(mean(DL_data1$PO*300),mean(HL_data1$PO*300),mean(NR_data1$PO*300),mean(SR_data1$PO*300))
+
+cbind(mean(DL_data1$PH*100),mean(HL_data1$PH*100),mean(NR_data1$PH*100),mean(SR_data1$PH*100))
+
+dim(final_coefs)
+
+
+library(tidyverse)
+library(reshape2)
+names(coef_data3)
+names(coef_data33)
+
+c <- list(V1=DL_data1$NU,V2=HL_data1$NU,V3=NR_data1$NU,V4=SR_data1$NU)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+abcc <- list(V1=DL_data1$NU_WTP,V2=HL_data1$NU_WTP,V3=NR_data1$NU_WTP,V4=SR_data1$NU_WTP)
+data_22a <- melt(abcc) %>% data.frame()
+pairwise.t.test(data_22a$value, data_22a$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$SE,V2=HL_data1$SE,V3=NR_data1$SE,V4=SR_data1$SE)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+SE_all <- list(V1=DL_data1$SE_WTP,V2=HL_data1$SE_WTP,V3=NR_data1$SE_WTP,V4=SR_data1$SE_WTP)
+data_22b <- melt(SE_all) %>% data.frame()
+pairwise.t.test(data_22b$value, data_22b$L1, p.adj = "none")
+
+c <- list(V1=DL_data1$PO,V2=HL_data1$PO,V3=NR_data1$PO,V4=SR_data1$PO)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+PO_all <- list(V1=DL_data1$PO,V2=HL_data1$PO,V3=NR_data1$PO,V4=SR_data1$PO)
+data_22c <- melt(PO_all) %>% data.frame()
+pairwise.t.test(data_22c$value, data_22c$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$PH,V2=HL_data1$PH,V3=NR_data1$PH,V4=SR_data1$PH)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+PH_all <- list(V1=DL_data1$PH,V2=HL_data1$PH,V3=NR_data1$PH,V4=SR_data1$PH)
+data_22d <- melt(PH_all) %>% data.frame()
+pairwise.t.test(data_22d$value, data_22d$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$ASC1,V2=HL_data1$ASC1,V3=NR_data1$ASC1,V4=SR_data1$ASC1)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+
+
+ct <- list(V1=DL_data1$TOTAL_WTP,V2=HL_data1$TOTAL_WTP,V3=NR_data1$TOTAL_WTP,V4=SR_data1$TOTAL_WTP)
+
+data_2 <- melt(ct) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+# less than 230 data
+# 
+DL_less_230 <- DL_data1 %>% filter(TOTAL_WTP<230)
+
+
+HL_less_230 <- HL_data1 %>% filter(TOTAL_WTP<230)
+
+NR_less_230 <- NR_data1 %>% filter(TOTAL_WTP<230)
+
+SR_less_230 <- SR_data1 %>% filter(TOTAL_WTP<230)
+
+summary(DL_less_230$TOTAL_WTP)
+summary(HL_less_230$TOTAL_WTP)
+summary(NR_less_230$TOTAL_WTP)
+summary(SR_less_230$TOTAL_WTP)
+
+data_less_than_230 <- list(V1=DL_less_230$TOTAL_WTP,V2=HL_less_230$TOTAL_WTP,V3=NR_less_230$TOTAL_WTP,V4=SR_less_230$TOTAL_WTP)
+
+data_230 <- melt(data_less_than_230) %>% data.frame()
+pairwise.t.test(data_230$value, data_230$L1, p.adj = "none")
+
+
+# socioeconomic
+# female  and male
+
+DL_male_data <- filter(DL_data1 , DL_data1$Male==1)
+DL_female_data <- filter(DL_data1 , DL_data1$Male==0)  
+HL_male_data <- filter(HL_data1 , HL_data1$Male==1)
+HL_female_data <- filter(HL_data1 , HL_data1$Male==0)    
+NR_male_data <- filter(NR_data1 ,NR_data1$Male==1)
+NR_female_data <- filter(NR_data1 , NR_data1$Male==0)    
+SR_male_data <- filter(SR_data1 , SR_data1$Male==1)
+SR_female_data <- filter(SR_data1 , SR_data1$Male==0)    
+
+
+DL_male <- CI(DL_male_data$TOTAL_WTP)
+DL_female <- CI(DL_female_data$TOTAL_WTP)
+HL_male <- CI(HL_male_data$TOTAL_WTP)
+HL_female<- CI(HL_female_data$TOTAL_WTP)
+NR_male <- CI(NR_male_data$TOTAL_WTP)
+NR_female <- CI(NR_female_data$TOTAL_WTP)
+SR_male <- CI(SR_male_data$TOTAL_WTP)
+SR_female <- CI(SR_female_data$TOTAL_WTP)
+
+cbind(DL_female[2],HL_female[2] ,NR_female[2] ,SR_female[2] )
+cbind(DL_male[2],HL_male[2] ,NR_male[2] ,SR_male[2])
+
+paste("[",round(DL_female[3],3),",",round(DL_female[1],3),"]","&","[",round(HL_female[3],3),",",round(HL_female[1],3),"]","&","[",round(NR_female[3],3) ,",",round(NR_female[1],3),"]","&","[",round(SR_female[3],3),",",round(SR_female[1],3),"]" )
+
+paste("[",round(DL_male[3],3),",",round(DL_male[1],3),"]","&","[",round(HL_male[3],3),",",round(HL_male[1],3),"]","&","[",round(NR_male[3],3) ,",",round(NR_male[1],3),"]","&","[",round(SR_male[3],3),",",round(SR_male[1],3),"]" )
+
+
+c <- list(V1=DL_female_data$TOTAL_WTP,V2=HL_female_data$TOTAL_WTP,V3=NR_female_data$TOTAL_WTP,V4=SR_female_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=DL_male_data$TOTAL_WTP,V2=HL_male_data$TOTAL_WTP,V3=NR_male_data$TOTAL_WTP,V4=SR_male_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_female_data$TOTAL_WTP,V2= DL_male_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=HL_female_data$TOTAL_WTP,V2= HL_male_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=NR_female_data$TOTAL_WTP,V2= NR_male_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=SR_female_data$TOTAL_WTP,V2= SR_male_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#highincome_lowincome
+
+DL_highincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==1)
+DL_lowincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==0)  
+HL_highincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==1)
+HL_lowincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==0)    
+NR_highincome_data <- filter(NR_data1 ,NR_data1$HIGHINCOME==1)
+NR_lowincome_data <- filter(NR_data1 , NR_data1$HIGHINCOME==0)    
+SR_highincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==1)
+SR_lowincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==0)    
+
+
+DL_highincome <- CI(DL_highincome_data$TOTAL_WTP)
+DL_lowincome <- CI(DL_lowincome_data$TOTAL_WTP)
+HL_highincome <- CI(HL_highincome_data$TOTAL_WTP)
+HL_lowincome<- CI(HL_lowincome_data$TOTAL_WTP)
+NR_highincome <- CI(NR_highincome_data$TOTAL_WTP)
+NR_lowincome <- CI(NR_lowincome_data$TOTAL_WTP)
+SR_highincome <- CI(SR_highincome_data$TOTAL_WTP)
+SR_lowincome <- CI(SR_lowincome_data$TOTAL_WTP)
+
+cbind(DL_lowincome[2],HL_lowincome[2] ,NR_lowincome[2] ,SR_lowincome[2] )
+cbind(DL_highincome[2],HL_highincome[2] ,NR_highincome[2] ,SR_highincome[2] )
+
+
+paste("[",round(DL_lowincome[3],3),",",round(DL_lowincome[1],3),"]","&","[",round(HL_lowincome[3],3),",",round(HL_lowincome[1],3),"]","&","[",round(NR_lowincome[3],3) ,",",round(NR_lowincome[1],3),"]","&","[",round(SR_lowincome[3],3),",",round(SR_lowincome[1],3),"]" )
+
+paste("[",round(DL_highincome[3],3),",",round(DL_highincome[1],3),"]","&","[",round(HL_highincome[3],3),",",round(HL_highincome[1],3),"]","&","[",round(NR_highincome[3],3) ,",",round(NR_highincome[1],3),"]","&","[",round(SR_highincome[3],3),",",round(SR_highincome[1],3),"]" )
+
+
+b <- list(V1=DL_highincome_data$TOTAL_WTP,V2=HL_highincome_data$TOTAL_WTP,V3=NR_highincome_data$TOTAL_WTP,V4=SR_highincome_data$TOTAL_WTP)
+data_2 <- melt(b) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=DL_lowincome_data$TOTAL_WTP,V2=HL_lowincome_data$TOTAL_WTP,V3=NR_lowincome_data$TOTAL_WTP,V4=SR_lowincome_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+
+x11 <- list(V1=DL_highincome_data$TOTAL_WTP,V2= DL_lowincome_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=HL_highincome_data$TOTAL_WTP,V2= HL_lowincome_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=NR_highincome_data$TOTAL_WTP,V2= NR_lowincome_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+x11 <- list(V1=SR_highincome_data$TOTAL_WTP,V2= SR_lowincome_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+# age above and below
+Ageabove_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==1)
+Agebelow_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==0) 
+
+DL_old_data <- filter(DL_data1 , DL_data1$AGEABOVE55==1)
+DL_young_data <- filter(DL_data1 , DL_data1$AGEABOVE55==0)  
+HL_old_data <- filter(HL_data1 , HL_data1$AGEABOVE55==1)
+HL_young_data <- filter(HL_data1 , HL_data1$AGEABOVE55==0)    
+NR_old_data <- filter(NR_data1 ,NR_data1$AGEABOVE55==1)
+NR_young_data <- filter(NR_data1 , NR_data1$AGEABOVE55==0)    
+SR_old_data <- filter(SR_data1 , SR_data1$AGEABOVE55==1)
+SR_young_data <- filter(SR_data1 , SR_data1$AGEABOVE55==0)    
+
+
+DL_old <- CI(DL_old_data$TOTAL_WTP)
+DL_young <- CI(DL_young_data$TOTAL_WTP)
+HL_old <- CI(HL_old_data$TOTAL_WTP)
+HL_young<- CI(HL_young_data$TOTAL_WTP)
+NR_old <- CI(NR_old_data$TOTAL_WTP)
+NR_young <- CI(NR_young_data$TOTAL_WTP)
+SR_old <- CI(SR_old_data$TOTAL_WTP)
+SR_young <- CI(SR_young_data$TOTAL_WTP)
+
+cbind(DL_young[2],HL_young[2] ,NR_young[2] ,SR_young[2] )
+cbind(DL_old[2],HL_old[2] ,NR_old[2] ,SR_old[2] )
+
+
+paste("[",round(DL_old[3],3),",",round(DL_old[1],3),"]","&","[",round(HL_old[3],3),",",round(HL_old[1],3),"]","&","[",round(NR_old[3],3) ,",",round(NR_old[1],3),"]","&","[",round(SR_old[3],3),",",round(SR_old[1],3),"]")
+
+
+paste("[",round(DL_young[3],3),",",round(DL_young[1],3),"]","&","[",round(HL_young[3],3),",",round(HL_young[1],3),"]","&","[",round(NR_young[3],3) ,",",round(NR_young[1],3),"]","&","[",round(SR_young[3],3),",",round(SR_young[1],3),"]" )
+
+
+v11 <- cbind(CI(DL_old_data$TOTAL_WTP),CI(Ageabove_data1$HL_WTP),CI(Ageabove_data1$NR_WTP),CI(Ageabove_data1$SR_WTP))
+v11[1,]
+
+v12 <- cbind(CI(Agebelow_data1$DL_WTP),CI(Agebelow_data1$HL_WTP),CI(Agebelow_data1$NR_WTP),CI(Agebelow_data1$SR_WTP))
+v12[1,]
+
+m2 <- list(V1=DL_old_data$TOTAL_WTP,V2=HL_old_data$TOTAL_WTP,V3=NR_old_data$TOTAL_WTP,V4=SR_old_data$TOTAL_WTP)
+data_2 <- melt(m2) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+m2 <- list(V1=DL_young_data$TOTAL_WTP,V2=HL_young_data$TOTAL_WTP,V3=NR_young_data$TOTAL_WTP,V4=SR_young_data$TOTAL_WTP)
+data_2 <- melt(m2) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+#
+
+x11 <- list(V1=DL_old_data$TOTAL_WTP,V2= DL_young_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=HL_old_data$TOTAL_WTP,V2= HL_young_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+x11 <- list(V1=NR_old_data$TOTAL_WTP,V2= NR_young_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+x11 <- list(V1=SR_old_data$TOTAL_WTP,V2= SR_young_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+# college vs no college
+
+
+
+DL_college_data <- filter(DL_data1 , DL_data1$COLLEGE==1)
+DL_nocollege_data <- filter(DL_data1 , DL_data1$COLLEGE==0)  
+HL_college_data <- filter(HL_data1 , HL_data1$COLLEGE==1)
+HL_nocollege_data <- filter(HL_data1 , HL_data1$COLLEGE==0)    
+NR_college_data <- filter(NR_data1 ,NR_data1$COLLEGE==1)
+NR_nocollege_data <- filter(NR_data1 , NR_data1$COLLEGE==0)    
+SR_college_data <- filter(SR_data1 , SR_data1$COLLEGE==1)
+SR_nocollege_data <- filter(SR_data1 , SR_data1$COLLEGE==0)    
+
+
+DL_college <- CI(DL_college_data$TOTAL_WTP)
+DL_nocollege <- CI(DL_nocollege_data$TOTAL_WTP)
+HL_college <- CI(HL_college_data$TOTAL_WTP)
+HL_nocollege<- CI(HL_nocollege_data$TOTAL_WTP)
+NR_college <- CI(NR_college_data$TOTAL_WTP)
+NR_nocollege <- CI(NR_nocollege_data$TOTAL_WTP)
+SR_college <- CI(SR_college_data$TOTAL_WTP)
+SR_nocollege <- CI(SR_nocollege_data$TOTAL_WTP)
+
+cbind(DL_nocollege[2],HL_nocollege[2] ,NR_nocollege[2] ,SR_nocollege[2] )
+cbind(DL_college[2],HL_college[2] ,NR_college[2] ,SR_college[2] )
+
+paste("[",round(DL_nocollege[3],3),",",round(DL_nocollege[1],3),"]","&","[",round(HL_nocollege[3],3),",",round(HL_nocollege[1],3),"]","&","[",round(NR_nocollege[3],3) ,",",round(NR_nocollege[1],3),"]","&","[",round(SR_nocollege[3],3),",",round(SR_nocollege[1],3),"]" )
+
+
+paste("[",round(DL_college[3],3),",",round(DL_college[1],3),"]","&","[",round(HL_college[3],3),",",round(HL_college[1],3),"]","&","[",round(NR_college[3],3) ,",",round(NR_college[1],3),"]","&","[",round(SR_college[3],3),",",round(SR_college[1],3),"]")
+
+
+c <- list(V1=DL_college_data$TOTAL_WTP,V2=HL_college_data$TOTAL_WTP,V3=NR_college_data$TOTAL_WTP,V4=SR_college_data$TOTAL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x <- list(V1=DL_nocollege_data$TOTAL_WTP,V2=HL_nocollege_data$TOTAL_WTP,V3=NR_nocollege_data$TOTAL_WTP,V4=SR_nocollege_data$TOTAL_WTP)
+data_2 <- melt(x) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#
+
+x11 <- list(V1=DL_college_data$TOTAL_WTP,V2= DL_nocollege_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=HL_college_data$TOTAL_WTP,V2= HL_nocollege_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=NR_college_data$TOTAL_WTP,V2= NR_nocollege_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=SR_college_data$TOTAL_WTP,V2= SR_nocollege_data$TOTAL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+#===============================================
+# 8b. Plots for overall WTP (Figure 1 in article)
+#===============================================
+#===============
+# NU Plot
+#===============================================
+
+library(ggplot2)
+library(reshape2)
+x <- list(DegLand=DL_data1$NU_WTP,HistLand=HL_data1$NU_WTP,NGORun=NR_data1$NU_WTP,StateRun=SR_data1$NU_WTP)
+data_nu<- melt(x)
+#data_nu[280:350,1:2]
+pairwise.t.test(data_nu$value, data_nu$L1, p.adj = "none")
+gnu1 <-
+  ggplot(data_nu, aes(x = value, color = L1,linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme() + scale_x_continuous(limit = c(-110, 430)) +scale_y_continuous(limit = c(0,0.012),breaks=seq(from = 0, to = 0.012, by = 0.003)) + ylab("Density") + xlab("WTP") + ggtitle("(a) Decrease nutrient loss to water") + theme_classic() + theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(
+      size = 14,
+      family = "Times",
+      angle = 0,
+      vjust = -0.000005
+    )
+  ) +
+  theme(
+    plot.margin = unit(c(1, 5, 10, 4), units = "points"),
+    axis.title.y = element_text(
+      face = "bold",
+      vjust = 1.8,
+      size = 14,
+      family = "Times"
+    ),
+    axis.text.y =  element_text(size = 14, family = "Times")
+  )
+
+mu_nu <- ddply(data_nu, "L1", summarise, grp.mean=mean(value))
+head(mu_nu)
+
+
+(gnu1 <- gnu1+ geom_vline(data=mu_nu, aes(xintercept=grp.mean, color=L1),linetype="dashed") + scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + theme(legend.position="none",legend.title = element_blank()))
+
+
+#===============================================
+# Sediments
+#===============================================
+library(ggplot2)
+library(reshape2)
+y <- list(DegLand=DL_data1$SE_WTP,HistLand=HL_data1$SE_WTP,NGORun=NR_data1$SE_WTP,StateRun=SR_data1$SE_WTP)
+data_se <- melt(y)
+pairwise.t.test(data_se$value, data_se$L1, p.adj = "none")
+gse1 <-
+  ggplot(data_se, aes(x = value, color = L1,linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme()+ scale_x_continuous(
+    limit = c(-40,60)) +scale_y_continuous(limit = c(0,0.092),breaks=seq(from = 0, to = 0.092, by = 0.023))+ ylab("Density") + xlab("WTP") + ggtitle("(b) Decrease sediment loss") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =0,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+mu_se <- ddply(data_se, "L1", summarise, grp.mean=mean(value))
+head(mu_se)
+
+
+(gse1 <- gse1 + geom_vline(data=mu_se, aes(xintercept=grp.mean, color=L1),linetype="dashed") + scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + theme(legend.position="none",legend.title = element_blank()))
+
+#===============================================
+# Pollinators
+#===============================================
+library(ggplot2)
+library(reshape2)
+z <- list(DegLand=DL_data1$PO*300,HistLand=HL_data1$PO*300,NGORun=NR_data1$PO*300,StateRun=SR_data1$PO*300)
+data_po <- melt(z)
+pairwise.t.test(data_po$value, data_po$L1, p.adj = "none")
+gpo1 <-
+  ggplot(data_po, aes(x = value, color = L1,linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme()+ scale_x_continuous(
+    limit = c(-40,160)) +scale_y_continuous(limit = c(0,0.0375),breaks=seq(from = 0, to = 0.0375, by = 0.009))+ ylab("Density") + xlab("WTP") + ggtitle("(c) Increase number of pollinators") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =0,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+mu_po <- ddply(data_po, "L1", summarise, grp.mean=mean(value))
+head(mu_po)
+
+
+(gpo1 <- gpo1 + geom_vline(data=mu_po, aes(xintercept=grp.mean, color=L1),linetype="dashed") + scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + theme(legend.position="none",legend.title = element_blank()))
+
+#===============================================
+# Pheasants
+#===============================================
+library(ggplot2)
+library(reshape2)
+a <- list(DegLand=DL_data1$PH*100,HistLand=HL_data1$PH*100,NGORun=NR_data1$PH*100,StateRun=SR_data1$PH*100)
+data_ph <- melt(a)
+pairwise.t.test(data_ph$value, data_ph$L1, p.adj = "none")
+gph1 <-
+  ggplot(data_ph, aes(x = value, color = L1,linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme()+ scale_x_continuous(
+    limit = c(-50,50)) + scale_y_continuous(limit = c(0,0.06),breaks=seq(from = 0, to = 0.06, by = 0.015)) +ylab("Density") + xlab("WTP") + ggtitle("(d) Increase types of birds") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =0,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+mu_ph <- ddply(data_ph, "L1", summarise, grp.mean=mean(value))
+head(mu_ph)
+
+
+(gph1 <- gph1 + geom_vline(data=mu_ph, aes(xintercept=grp.mean, color=L1),linetype="dashed") + scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + theme(legend.position="none",legend.title = element_blank()))
+
+
+#===============================================
+# Constants
+#===============================================
+library(ggplot2)
+library(reshape2)
+b <- list(DegLand=DL_data1$ASC1,HistLand=HL_data1$ASC1,NGORun=NR_data1$ASC1,StateRun=SR_data1$ASC1)
+data_ASC <- melt(b) %>% data.frame()
+a1 <- aov(data_ASC$value ~ data_ASC$L1) 
+summary(a1)
+pairwise.t.test(data_ASC$value, data_ASC$L1, p.adj = "none")
+
+
+gASC1 <-
+  ggplot(data_ASC, aes(x = value, color = L1,linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme()+ scale_x_continuous(
+    limit = c(-300,500)) + scale_y_continuous(limit=c(0,0.007),breaks=seq(from = 0, to = 0.007, by = 0.0015))+ ylab("Density") + xlab("WTP") + ggtitle("(e) Alternative specific constant") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =0,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+mu_ASC <- ddply(data_ASC, "L1", summarise, grp.mean=mean(value))
+head(mu_ASC)
+
+gASC1 <- gASC1 + 
+scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + theme(legend.position="bottom",legend.box="vertical", legend.margin=margin(),legend.title = element_blank(),legend.text=element_text(size=11))
+
+
+(gASC1 <- gASC1 + geom_vline(data=mu_ASC, aes(xintercept=grp.mean, color=L1),linetype="dashed"))
+
+
+#===============================================
+# oVerall WTP
+#===============================================
+
+library(ggplot2)
+library(reshape2)
+c <- list(DegLand=DL_data1$TOTAL_WTP,HistLand=HL_data1$TOTAL_WTP,NGORun=NR_data1$TOTAL_WTP,StateRun=SR_data1$TOTAL_WTP)
+data_WTP <- melt(c)
+pairwise.t.test(data_WTP$value, data_WTP$L1, p.adj = "none")
+a1 <- aov(data_WTP$value ~ data_WTP$L1) 
+summary(a1)
+TukeyHSD(a1)
+gWTP1 <-
+  ggplot(data_WTP, aes(x = value, color = L1, linetype=L1)) + geom_density(alpha = 0.05) + theme_bw() + theme()+ scale_x_continuous(
+    limit = c(-300,1000),breaks = seq(from=-300,1000,by=300)) + scale_y_continuous(limit = c(0,0.0042),breaks=seq(from = 0, to = 0.0042, by = 0.001)) + ylab("Density") + xlab("WTP") + ggtitle("(f) Overall willingness to pay") + theme_classic() + theme(axis.title.x=element_blank(),axis.text.x = element_text(size = 14, family = "Times",angle =0,vjust = -0.000005)) +
+  theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 14, family = "Times"),axis.text.y =  element_text(size = 14, family = "Times"))
+
+
+mu_WTP <- ddply(data_WTP, "L1", summarise, grp.mean=mean(value))
+head(mu_WTP)
+
+
+(gWTP1 <- gWTP1 + geom_vline(data=mu_WTP, aes(xintercept=grp.mean, color=L1),linetype="dashed") + scale_color_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) + scale_fill_manual(values=c("#fec44f","#2c7fb8","#99d594","#d95f0e")) 
++ theme(legend.position="none",legend.title = element_blank()))
+
+
+library(patchwork)
+# scale_colour_manual("", values = c("StateDeg" = "#99d594", "StateHist" = "#d95f0e", "NGODeg" = "#fec44f", "NGOHist" = "#2c7fb8"),labels = c('StateDeg','StateHist','NGODeg','NGOHist')) 
+
+(g_ngo_hist <- gnu1+gse1+gpo1+ gph1+gASC1+gWTP1)
+
+library(ggpubr)
+ggarrange(gnu1, gse1, gpo1,gph1, gASC1,gWTP1, ncol=2, nrow=3, common.legend = TRUE, legend="bottom")
+
+
+
+#<!---------------------------------->
+## A. Percentile to accept the payment  (Appedix figure for payment acceptance rate)
+#<!---------------------------------->
+
+set.seed(1234)
+sets2 <- final_coefs2 %>%
+  group_by(COLLEGE) %>% 
+  nest() %>%            
+  ungroup() %>% 
+  mutate(n = c(720,480)) %>% 
+  mutate(samp = map2(data, n, sample_n)) %>% 
+  dplyr::select(-data) %>%
+  unnest(samp)
+
+names(sets2)
+names(final_coefs2)
+  
+Not_sorted_data1 <- cbind(ID=1:1200,DL_WTP = sets2$DL_,
+HL_WTP= sets2$HL_TOTAL_WTP, 
+NR_WTP =sets2$NR_TOTAL_WTP, 
+SR_WTP= sets2$SR_TOTAL_WTP) %>% data.frame()
+
+
+sorted_values2 <- cbind(DL_WTP =(Not_sorted_data1$DL_WTP),HL_WTP =(Not_sorted_data1$HL_WTP),NR_WTP =(Not_sorted_data1$NR_WTP),SR_WTP =(Not_sorted_data1$SR_WTP)) %>% data.frame()
+sorted_values2$DL_WTP
+
+
+
+
+sorted_quart_values2 <- cbind(Id= 100:0,DegLand = quantile(DL_data1$TOTAL_WTP, prob = seq(0.0, 1,length =101)),HistLand = quantile(HL_data1$TOTAL_WTP, prob = seq(0.0, 1,length =101)),NGORun = quantile(NR_data1$TOTAL_WTP, prob = seq(0.0, 1,length =101)),StateRun = quantile(SR_data1$TOTAL_WTP, prob = seq(0.0, 1,length =101))) %>% data.frame()
+
+
+sorted_quart_values3 <- sorted_quart_values2[15:101,]
+
+(
+  df_long2 <- melt(data = sorted_quart_values3, 
+                id.vars = c("Id"),
+                measure.vars = c("DegLand","HistLand","NGORun","StateRun"),
+                variable.name = "Plans",
+                value.name = "Values")
+)
+
+
+
+
+(
+  g_plot2a <- ggplot(data = df_long2, aes(x = Id,y = Values,color = Plans,linetype= Plans )) + 
+  geom_line(size = 0.1) + geom_point(aes(shape=Plans),size=0.1) + scale_color_manual(values=c( "#fec44f","#2c7fb8","#99d594","#d95f0e"))+ ylab("Payment options ($)") + xlab("Percent of the Households Accepting the Payment") + ggtitle(" ") + theme_classic() + theme(axis.text.x = element_text(size = 12, family = "Times",angle =0,vjust = 1.2)) + theme(plot.margin = unit(c(1,5,10,4),units="points"), 
+        axis.title.y = element_text(face = "bold",vjust= 1.8,size = 12, family = "Times"),axis.title.x = element_text(face = "bold",vjust= 1.8,size = 12, family = "Times"), axis.text.y =  element_text(size = 12, family = "Times"))+scale_y_continuous(breaks=seq(from = 0, to = 1500, by = 100))+scale_x_continuous(breaks=seq(from = 0, to = 100, by = 5))
+)
+
+
+
+
+(g_plot2b1 <- g_plot2a + scale_fill_manual(name = "Plan", labels = c("SD", "SH", "ND","NH"))+ theme(legend.position = c(0.55, 0.8),
+          legend.direction = "horizontal",legend.background = element_rect(fill = "skyblue"),
+  legend.key = element_rect(fill = "white", color = NA),
+  legend.title = element_blank(),
+  legend.key.size = unit(0.5, "cm"),
+  legend.key.width = unit(0.8,"cm") ) + guides(colour = guide_legend(override.aes = list(size=0.5))) +
+  geom_segment(aes(x=75,xend=75,y=0,yend=41.07),color="black",linetype="solid",size=0.25) +
+    geom_segment(aes(x=0,xend=75,y=32.69,yend=32.69),color="#fec44f",linetype="solid",size=0.25) + # deg land
+     geom_segment(aes(x=0,xend=75,y=41.4,yend=41.4),color="#2c7fb8",linetype="dashed",size=0.25) + #  histland
+  geom_segment(aes(x=0,xend=75,y=40.68,yend=40.68),color="#99d594",linetype="longdash",size=0.25) + # ngo run 
+  geom_segment(aes(x=0,xend=75,y=34.13,yend=34.13),color="#d95f0e",linetype="twodash",size=0.25) + # state run
+  geom_segment(aes(x=50,xend=50,y=0,yend=125.44),color="black",linetype="solid",size=0.25) +
+      geom_segment(aes(x=0,xend=50,y=98,yend=98),color="#fec44f" ,linetype="solid",size=0.25) + # deg
+     geom_segment(aes(x=0,xend=50,y=125.44,yend=125.44),color="#2c7fb8",linetype="dashed",size=0.25) + #hist
+  geom_segment(aes(x=0,xend=50,y=124.66,yend=124.66),color="#99d594" ,linetype="longdash",size = 0.25) + # ngo
+      geom_segment(aes(x=0,xend=50,y=94.76,yend=94.76),color="#d95f0e",linetype="twodash",size=0.25) + #state
+    
+  geom_segment(aes(x=25,xend=25,y=0,yend=280.45),color="black",linetype="solid",size=0.25) +
+     geom_segment(aes(x=0,xend=25,y=280.45,yend=280.45),color="#d95f0e",linetype="twodash",size=0.25) + # state
+  geom_segment(aes(x=0,xend=25,y=232.89,yend=232.89),color="#2c7fb8",linetype="dashed",size=0.25) + #hist
+  geom_segment(aes(x=0,xend=25,y=249.07,yend=249.07),color="#fec44f",linetype="longdash",size = 0.25)  + #deg
+    geom_segment(aes(x=0,xend=25,y=233,yend=233),color="#99d594",linetype="twodash",size=0.25) + 
+    
+    geom_segment(aes(x=0,xend=39,y=150,yend=150),color="black",linetype="solid",size=0.25) +
+  geom_segment(aes(x=32.5,xend=32.5,y=0,yend=150),color="#d95f0e",linetype="twodash",size=0.25) + # state
+  geom_segment(aes(x=39,xend=39,y=0,yend=150),color="#2c7fb8",linetype="dashed",size=0.25) + #hist
+  geom_segment(aes(x=31.7,xend=31.7,y=0,yend=150),color="#fec44f",linetype="solid",size=0.25) + #deg
+  geom_segment(aes(x=37.8,xend=37.8,y=0,yend=150),color="#99d594",linetype="longdash",size=0.25) + #ngo
+   expand_limits(x = 0) + coord_flip()
+)
+
+g_plot2b1 + scale_x_continuous(expand = c(0, 0), limits = c(0, NA),breaks=seq(from = 0, to = 100, by = 5)) + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 950),breaks=seq(from = 0, to = 950, by = 100))
+  
+
+
+
+
+```
+#============================
+# 9. confidence sample model post estimation (Appendix- Robustness Check)
+#===============================
+```{r}
+##
+
+
+summary(GMNL_Final_conf_sample)
+var_list <- c("nu","se","po","ph","ASC",  "nu_above55" , "nu_female" , "nu_college" , "nu_highincome" ,"se_above55" , "se_female" ,"se_college" ,
+    "se_highincome" ,"po_above55" ,"po_female" ,"po_college" ,
+    "po_highincome" ,"ph_above55" ,"ph_female" ,"ph_college" ,
+    "ph_highincome" ,"const_above55" ,"const_female" , "const_college" ,"const_highincome"  )
+
+id_list <- data_WTP_space2$id %>% unique() 
+length(id_list)
+
+
+#GMNL_scale_model_final <- GMNL_scale_model_10
+(coef_data<- effect.gmnl(GMNL_Final_conf_sample, par = var_list, effect = "ce")[[1]] %>% data.frame()%>% mutate(id=id_list))
+
+summary(coef_data)
+
+#coef_data <- coef_data[5:9]
+# coef_data <- coef_data  %>% dplyr::rename(nu=ASC,se=Age,ph=College, po=Female,ASC=Highincome, Age_coef=nu,Female_coef=se,College_coef=po, Highincome_coef=ph) %>% data.frame() %>% mutate(id=id_list)
+
+summary(coef_data)
+
+coefs_all <- GMNL_Final_conf_sample$coefficients
+
+summary(coef_data)
+
+#<!---------------------------------->
+## create unique charecter and policy values
+#<!---------------------------------->
+
+data_frame_WTP <- data_WTP_space2 %>% data.frame()
+distinct_data <- dplyr::distinct(data_frame_WTP,id, .keep_all =TRUE) %>% data.frame()
+
+distinct_data <- distinct_data %>% mutate(distinct_data, STATE_DEG =distinct_data$state_deg, STATE_HIST =distinct_data$state_hist, NGO_DEG =distinct_data$ngo_deg, NGO_HIST=distinct_data$ngo_hist, AGE= distinct_data$Age,FEMALE= distinct_data$Female, HIGHINCOME= distinct_data$Highincome, COLLEGE= distinct_data$College, AGEABOVE55= distinct_data$age_above55,STATE_RUN=distinct_data$State_run,NGO_RUN=ngo_run_program, DEG_LAND = degraded_land,HIST_LAND =historical_managed_land  )
+
+distinct_data2 <- dplyr::select(distinct_data,id,STATE_DEG,STATE_HIST,NGO_DEG,NGO_HIST,AGE, FEMALE, HIGHINCOME, COLLEGE, AGEABOVE55,NoCollege, Lowincome,Male, age_below55,Male2,STATE_RUN, NGO_RUN,STATE_RUN, DEG_LAND,HIST_LAND) %>% data.frame()
+dim(distinct_data2)
+
+library(data.table)
+  
+  
+final_coefs <- dplyr::left_join(coef_data,distinct_data2 , by = 'id') %>% data.frame() %>% data.table()
+class(final_coefs)
+names(final_coefs)
+
+(prcoef_All <-
+  -exp(
+    coef(GMNL_Final_conf_sample)["het.(Intercept)"]
+    +
+      rep(coef(GMNL_Final_conf_sample)["het.degraded_land"],882) *distinct_data2$DEG_LAND + rep(coef(GMNL_Final_conf_sample)["het.ngo_run_program"],882)*distinct_data2$NGO_RUN))
+
+final_coefs1 <- cbind(final_coefs[,1:25]/-prcoef_All,final_coefs[,26:44])
+
+
+final_coefs2 <- final_coefs1[, ":="(NU = nu + nu_above55 *AGEABOVE55 + nu_female *FEMALE + nu_college *COLLEGE +nu_highincome*HIGHINCOME,SE = se + se_above55 *AGEABOVE55 + se_female *FEMALE + se_college *COLLEGE +se_highincome*HIGHINCOME,PO = po + po_above55 *AGEABOVE55 + po_female *FEMALE + po_college *COLLEGE +po_highincome*HIGHINCOME,PH = ph + ph_above55 *AGEABOVE55 + ph_female *FEMALE + ph_college *COLLEGE +ph_highincome*HIGHINCOME,ASC1 = ASC + const_above55 *AGEABOVE55 + const_female *FEMALE + const_college *COLLEGE +const_highincome*HIGHINCOME )]
+names(final_coefs2)
+final_coefs2$NU
+
+final_coefs2 <- final_coefs2[, ':='(TOTAL_WTP= NU*75 +SE*95 + PO*300 + PH*100 + ASC1, NU_WTP =NU*75,SE_WTP=SE*95,PO_WTP=PO*300,PH_WTP=PH*100)]
+names(final_coefs2)
+final_coefs2$TOTAL_WTP
+summary(final_coefs2$TOTAL_WTP)
+
+(DL_data1 = filter(final_coefs2,final_coefs2$DEG_LAND==1))
+(HL_data1 = filter(final_coefs2,final_coefs2$HIST_LAND ==1))
+(NR_data1 = filter(final_coefs2,final_coefs2$NGO_RUN ==1))
+(SR_data1 = filter(final_coefs2,final_coefs2$STATE_RUN ==1))
+
+summary(DL_data1$TOTAL_WTP)
+summary(HL_data1$TOTAL_WTP)
+summary(NR_data1$TOTAL_WTP)
+summary(SR_data1$TOTAL_WTP)
+
+a<- c(1,2,3)
+b <- c(10,11,12)
+c <- c(10,101,102)
+d <- c("yes","no","no")
+
+datacheck<- cbind(a,b,c,d) %>% data.frame()
+data111 <- filter(datacheck,datacheck$d=="yes")
+
+
+
+(col <- DL_data1 %>%
+  group_by(HIGHINCOME) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+dim(data_WTP_space1)
+
+( age <- my_data_final %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(f <- DL_data1 %>%
+  group_by(Female) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(inc <- DL_data1 %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+head(as.data.frame(g))
+
+(g <- DL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- HL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- NR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- SR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+library("plyr")
+count(DL_data1, 'COLLEGE','FEMALE')
+
+library(tidyverse)
+library(Rmisc)
+
+# Nu coefficients
+DL_NU <- CI(DL_data1$NU)
+HL_NU <- CI(HL_data1$NU)
+NR_NU <- CI(NR_data1$NU)
+SR_NU <- CI(SR_data1$NU)
+
+cbind(DL_NU[2],HL_NU[2] ,NR_NU[2] ,SR_NU[2] )
+
+paste("[",round(DL_NU[3],3),",",round(DL_NU[1],3),"]","&","[",round(HL_NU[3],3),",",round(HL_NU[1],3),"]","&","[",round(NR_NU[3],3) ,",",round(NR_NU[1],3),"]","&","[",round(SR_NU[3],3),",",round(SR_NU[1],3),"]" )
+
+DL_NU_WTP <- CI(DL_data1$NU_WTP)
+HL_NU_WTP <- CI(HL_data1$NU_WTP)
+NR_NU_WTP <- CI(NR_data1$NU_WTP)
+SR_NU_WTP <- CI(SR_data1$NU_WTP)
+
+paste(round(DL_NU_WTP[2],2),'&',round(HL_NU_WTP[2],2) ,'&',round(NR_NU_WTP[2],2),'&',round(SR_NU_WTP[2],2) )
+
+paste("[",round(DL_NU_WTP[3],2),",",round(DL_NU_WTP[1],2),"]","&","[",round(HL_NU_WTP[3],2),",",round(HL_NU_WTP[1],2),"]","&","[",round(NR_NU_WTP[3],2) ,",",round(NR_NU_WTP[1],2),"]","&","[",round(SR_NU_WTP[3],2),",",round(SR_NU_WTP[1],2),"]" )
+
+
+# Se coefficients
+
+DL_SE <- CI(DL_data1$SE)
+HL_SE <- CI(HL_data1$SE)
+NR_SE <- CI(NR_data1$SE)
+SR_SE <- CI(SR_data1$SE)
+
+cbind(DL_SE[2],HL_SE[2] ,NR_SE[2] ,SR_SE[2] )
+paste("(",round(DL_SE[3],3),",",round(DL_SE[1],3),")","&","(",round(HL_SE[3],3),",",round(HL_SE[1],3),")","&","(",round(NR_SE[3],3) ,",",round(NR_SE[1],3),")","&","(",round(SR_SE[3],3),",",round(SR_SE[1],3),")" )
+
+
+DL_SE_WTP <- CI(DL_data1$SE_WTP)
+HL_SE_WTP <- CI(HL_data1$SE_WTP)
+NR_SE_WTP <- CI(NR_data1$SE_WTP)
+SR_SE_WTP <- CI(SR_data1$SE_WTP)
+
+paste(round(DL_SE_WTP[2],2),'&',round(HL_SE_WTP[2],2) ,'&',round(NR_SE_WTP[2],2),'&',round(SR_SE_WTP[2],2) )
+
+paste("[",round(DL_SE_WTP[3],2),",",round(DL_SE_WTP[1],2),"]","&","[",round(HL_SE_WTP[3],2),",",round(HL_SE_WTP[1],2),"]","&","[",round(NR_SE_WTP[3],2) ,",",round(NR_SE_WTP[1],2),"]","&","[",round(SR_SE_WTP[3],2),",",round(SR_SE_WTP[1],2),"]" )
+
+
+# po coefficients
+
+DL_PO <- CI(DL_data1$PO)
+HL_PO <- CI(HL_data1$PO)
+NR_PO <- CI(NR_data1$PO)
+SR_PO <- CI(SR_data1$PO)
+
+cbind(DL_PO[2],HL_PO[2] ,NR_PO[2] ,SR_PO[2] )
+
+paste("(",round(DL_PO[3],3),",",round(DL_PO[1],3),")","&","(",round(HL_PO[3],3),",",round(HL_PO[1],3),")","&","(",round(NR_PO[3],3) ,",",round(NR_PO[1],3),")","&","(",round(SR_PO[3],3),",",round(SR_PO[1],3),")" )
+
+DL_PO_WTP <- CI(DL_data1$PO_WTP)
+HL_PO_WTP <- CI(HL_data1$PO_WTP)
+NR_PO_WTP <- CI(NR_data1$PO_WTP)
+SR_PO_WTP <- CI(SR_data1$PO_WTP)
+
+paste(round(DL_PO_WTP[2],2),'&',round(HL_PO_WTP[2],2) ,'&',round(NR_PO_WTP[2],2),'&',round(SR_PO_WTP[2],2) )
+
+paste("[",round(DL_PO_WTP[3],2),",",round(DL_PO_WTP[1],2),"]","&","[",round(HL_PO_WTP[3],2),",",round(HL_PO_WTP[1],2),"]","&","[",round(NR_PO_WTP[3],2) ,",",round(NR_PO_WTP[1],2),"]","&","[",round(SR_PO_WTP[3],2),",",round(SR_PO_WTP[1],2),"]" )
+
+
+# Ph coeficcients
+DL_PH <- CI(DL_data1$PH)
+HL_PH <- CI(HL_data1$PH)
+NR_PH <- CI(NR_data1$PH)
+SR_PH <- CI(SR_data1$PH)
+
+cbind(DL_PH[2],HL_PH[2] ,NR_PH[2] ,SR_PH[2] )
+paste("(",round(DL_PH[3],3),",",round(DL_PH[1],3),")","&","(",round(HL_PH[3],3),",",round(HL_PH[1],3),")","&","(",round(NR_PH[3],3) ,",",round(NR_PH[1],3),")","&","(",round(SR_PH[3],3),",",round(SR_PH[1],3),")" )
+
+
+DL_PH_WTP <- CI(DL_data1$PH_WTP)
+HL_PH_WTP <- CI(HL_data1$PH_WTP)
+NR_PH_WTP <- CI(NR_data1$PH_WTP)
+SR_PH_WTP <- CI(SR_data1$PH_WTP)
+
+paste(round(DL_PH_WTP[2],2),'&',round(HL_PH_WTP[2],2) ,'&',round(NR_PH_WTP[2],2),'&',round(SR_PH_WTP[2],2) )
+
+paste("[",round(DL_PH_WTP[3],2),",",round(DL_PH_WTP[1],2),"]","&","[",round(HL_PH_WTP[3],2),",",round(HL_PH_WTP[1],2),"]","&","[",round(NR_PH_WTP[3],2) ,",",round(NR_PH_WTP[1],2),"]","&","[",round(SR_PH_WTP[3],2),",",round(SR_PH_WTP[1],2),"]" )
+
+
+
+# ASC coefficients
+
+DL_ASC <- CI(DL_data1$ASC1)
+HL_ASC <- CI(HL_data1$ASC1)
+NR_ASC <- CI(NR_data1$ASC1)
+SR_ASC <- CI(SR_data1$ASC1)
+
+cbind(DL_ASC[2],HL_ASC[2] ,NR_ASC[2] ,SR_ASC[2] )
+cbind(DL_ASC[3],DL_ASC[1],HL_ASC[3] ,HL_ASC[1],NR_ASC[3] ,NR_ASC[1],SR_ASC[3],SR_ASC[1] )
+
+paste("[",round(DL_ASC[3],2),",",round(DL_ASC[1],2),"]","&","[",round(HL_ASC[3],2),",",round(HL_ASC[1],2),"]","&","[",round(NR_ASC[3],2) ,",",round(NR_ASC[1],2),"]","&","[",round(SR_ASC[3],2),",",round(SR_ASC[1],2),"]" )
+# Overall WTP coefficietns
+DL_WTP <- CI(DL_data1$TOTAL_WTP)
+HL_WTP <- CI(HL_data1$TOTAL_WTP)
+NR_WTP <- CI(NR_data1$TOTAL_WTP)
+SR_WTP<- CI(SR_data1$TOTAL_WTP )
+
+cbind(DL_ALL[2],HL_ALL[2] ,NR_ALL[2] ,SR_ALL[2] )
+cbind(DL_WTP[2],HL_WTP[2] ,NR_WTP[2] ,SR_WTP[2] )
+
+paste(round(DL_WTP[2],3),"&",round(HL_WTP[2],3),"&",round(NR_WTP[2],3) ,"&",round(SR_WTP[2],3))
+
+paste("[",round(DL_WTP[3],2),",",round(DL_WTP[1],2),"]","&","[",round(HL_WTP[3],2),",",round(HL_WTP[1],2),"]","&","[",round(NR_WTP[3],2) ,",",round(NR_WTP[1],2),"]","&","[",round(SR_WTP[3],2),",",round(SR_WTP[1],2),"]" )
+
+cbind(DL_WTP[3],DL_WTP[1],HL_WTP[3] ,HL_WTP[1],NR_WTP[3] ,NR_WTP[1],SR_WTP[3],SR_WTP[1] )
+
+All_data <- cbind (DL_ALL= (DL_data1$NU*75 +DL_data1$SE*90 + DL_data1$PO*300 + DL_data1$PH*100 + DL_data1$ASC1 ),
+HL_ALL = (HL_data1$NU*75 +HL_data1$SE*90 + HL_data1$PO*300 + HL_data1$PH*100 + HL_data1$ASC1),
+NR_ALL = (NR_data1$NU*75 +NR_data1$SE*90 + NR_data1$PO*300 + NR_data1$PH*100 + NR_data1$ASC1),
+SR_ALL = (SR_data1$NU*75 +SR_data1$SE*90 + SR_data1$PO*300 + SR_data1$PH*100 + SR_data1$ASC1)) %>% data.frame()
+
+summary(All_data)
+
+dim(final_coefs)
+
+cbind(mean(DL_data1$NU*75),mean(HL_data1$NU*75),mean(NR_data1$NU*75),mean(SR_data1$NU*75))
+cbind(mean(DL_data1$SE*90),mean(HL_data1$SE*90),mean(NR_data1$SE*90),mean(SR_data1$SE*90))
+
+cbind(mean(DL_data1$PO*300),mean(HL_data1$PO*300),mean(NR_data1$PO*300),mean(SR_data1$PO*300))
+
+cbind(mean(DL_data1$PH*100),mean(HL_data1$PH*100),mean(NR_data1$PH*100),mean(SR_data1$PH*100))
+
+dim(final_coefs)
+
+
+library(tidyverse)
+library(reshape2)
+names(coef_data3)
+names(coef_data33)
+
+c <- list(V1=DL_data1$NU,V2=HL_data1$NU,V3=NR_data1$NU,V4=SR_data1$NU)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$SE,V2=HL_data1$SE,V3=NR_data1$SE,V4=SR_data1$SE)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=DL_data1$PO,V2=HL_data1$PO,V3=NR_data1$PO,V4=SR_data1$PO)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$PH,V2=HL_data1$PH,V3=NR_data1$PH,V4=SR_data1$PH)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$ASC1,V2=HL_data1$ASC1,V3=NR_data1$ASC1,V4=SR_data1$ASC1)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+ct <- list(V1=DL_data1$TOTAL_WTP,V2=HL_data1$TOTAL_WTP,V3=NR_data1$TOTAL_WTP,V4=SR_data1$TOTAL_WTP)
+
+data_2 <- melt(ct) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+# socioeconomic
+# female  and male
+
+DL_male_data <- filter(DL_data1 , DL_data1$Male==1)
+DL_female_data <- filter(DL_data1 , DL_data1$Male==0)  
+HL_male_data <- filter(HL_data1 , HL_data1$Male==1)
+HL_female_data <- filter(HL_data1 , HL_data1$Male==0)    
+NR_male_data <- filter(NR_data1 ,NR_data1$Male==1)
+NR_female_data <- filter(NR_data1 , NR_data1$Male==0)    
+SR_male_data <- filter(SR_data1 , SR_data1$Male==1)
+SR_female_data <- filter(SR_data1 , SR_data1$Male==0)    
+
+
+DL_male <- CI(DL_male_data$TOTAL_WTP)
+DL_female <- CI(DL_female_data$TOTAL_WTP)
+HL_male <- CI(HL_male_data$TOTAL_WTP)
+HL_female<- CI(HL_female_data$TOTAL_WTP)
+NR_male <- CI(NR_male_data$TOTAL_WTP)
+NR_female <- CI(NR_female_data$TOTAL_WTP)
+SR_male <- CI(SR_male_data$TOTAL_WTP)
+SR_female <- CI(SR_female_data$TOTAL_WTP)
+
+cbind(DL_female[2],HL_female[2] ,NR_female[2] ,SR_female[2] )
+cbind(DL_male[2],HL_male[2] ,NR_male[2] ,SR_male[2] )
+
+c <- list(V1=Female_data1$DL_WTP,V2=Female_data1$HL_WTP,V3=Female_data1$NR_WTP,V4=Female_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Male_data1$DL_WTP,V2=Male_data1$HL_WTP,V3=Male_data1$NR_WTP,V4=Male_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=Female_data1$DL_WTP,V2= Male_data1$DL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Female_data1$HL_WTP,V2= Male_data1$HL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+c <- list(V1=Female_data1$NR_WTP,V2= Male_data1$NR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+c <- list(V1=Female_data1$SR_WTP,V2= Male_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#highincome_lowincome
+
+DL_highincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==1)
+DL_lowincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==0)  
+HL_highincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==1)
+HL_lowincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==0)    
+NR_highincome_data <- filter(NR_data1 ,NR_data1$HIGHINCOME==1)
+NR_lowincome_data <- filter(NR_data1 , NR_data1$HIGHINCOME==0)    
+SR_highincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==1)
+SR_lowincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==0)    
+
+
+DL_highincome <- CI(DL_highincome_data$TOTAL_WTP)
+DL_lowincome <- CI(DL_lowincome_data$TOTAL_WTP)
+HL_highincome <- CI(HL_highincome_data$TOTAL_WTP)
+HL_lowincome<- CI(HL_lowincome_data$TOTAL_WTP)
+NR_highincome <- CI(NR_highincome_data$TOTAL_WTP)
+NR_lowincome <- CI(NR_lowincome_data$TOTAL_WTP)
+SR_highincome <- CI(SR_highincome_data$TOTAL_WTP)
+SR_lowincome <- CI(SR_lowincome_data$TOTAL_WTP)
+
+cbind(DL_lowincome[2],HL_lowincome[2] ,NR_lowincome[2] ,SR_lowincome[2] )
+cbind(DL_highincome[2],HL_highincome[2] ,NR_highincome[2] ,SR_highincome[2] )
+
+
+
+
+b <- list(V1=Highincome_data1$DL_WTP,V2=Highincome_data1$HL_WTP,V3=Highincome_data1$NR_WTP,V4=Highincome_data1$SR_WTP)
+data_2 <- melt(b) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Lowincome_data1$DL_WTP,V2=Lowincome_data1$HL_WTP,V3=Lowincome_data1$NR_WTP,V4=Lowincome_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+
+x11 <- list(V1=Highincome_data1$DL_WTP,V2= Lowincome_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Highincome_data1$HL_WTP,V2= Lowincome_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+x11 <- list(V1=Highincome_data1$NR_WTP,V2= Lowincome_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Highincome_data1$SR_WTP,V2= Lowincome_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+# age above and below
+Ageabove_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==1)
+Agebelow_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==0) 
+
+DL_old_data <- filter(DL_data1 , DL_data1$AGEABOVE55==1)
+DL_young_data <- filter(DL_data1 , DL_data1$AGEABOVE55==0)  
+HL_old_data <- filter(HL_data1 , HL_data1$AGEABOVE55==1)
+HL_young_data <- filter(HL_data1 , HL_data1$AGEABOVE55==0)    
+NR_old_data <- filter(NR_data1 ,NR_data1$AGEABOVE55==1)
+NR_young_data <- filter(NR_data1 , NR_data1$AGEABOVE55==0)    
+SR_old_data <- filter(SR_data1 , SR_data1$AGEABOVE55==1)
+SR_young_data <- filter(SR_data1 , SR_data1$AGEABOVE55==0)    
+
+
+DL_old <- CI(DL_old_data$TOTAL_WTP)
+DL_young <- CI(DL_young_data$TOTAL_WTP)
+HL_old <- CI(HL_old_data$TOTAL_WTP)
+HL_young<- CI(HL_young_data$TOTAL_WTP)
+NR_old <- CI(NR_old_data$TOTAL_WTP)
+NR_young <- CI(NR_young_data$TOTAL_WTP)
+SR_old <- CI(SR_old_data$TOTAL_WTP)
+SR_young <- CI(SR_young_data$TOTAL_WTP)
+
+cbind(DL_young[2],HL_young[2] ,NR_young[2] ,SR_young[2] )
+cbind(DL_old[2],HL_old[2] ,NR_old[2] ,SR_old[2] )
+
+
+v11 <- cbind(CI(Ageabove_data1$DL_WTP),CI(Ageabove_data1$HL_WTP),CI(Ageabove_data1$NR_WTP),CI(Ageabove_data1$SR_WTP))
+v11[1,]
+
+v12 <- cbind(CI(Agebelow_data1$DL_WTP),CI(Agebelow_data1$HL_WTP),CI(Agebelow_data1$NR_WTP),CI(Agebelow_data1$SR_WTP))
+v12[1,]
+
+m2 <- list(V1=Ageabove_data1$DL_WTP,V2=Ageabove_data1$HL_WTP,V3=Ageabove_data1$NR_WTP,V4=Ageabove_data1$SR_WTP)
+data_2 <- melt(m2) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+xx <- list(V1=Agebelow_data1$DL_WTP,V2=Agebelow_data1$HL_WTP,V3=Agebelow_data1$NR_WTP,V4=Agebelow_data1$SR_WTP)
+data_2 <- melt(xx) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+#
+
+x11 <- list(V1=Ageabove_data1$DL_WTP,V2= Agebelow_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$HL_WTP,V2= Agebelow_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$NR_WTP,V2= Agebelow_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$SR_WTP,V2= Agebelow_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+# college vs no college
+
+
+
+DL_college_data <- filter(DL_data1 , DL_data1$COLLEGE==1)
+DL_nocollege_data <- filter(DL_data1 , DL_data1$COLLEGE==0)  
+HL_college_data <- filter(HL_data1 , HL_data1$COLLEGE==1)
+HL_nocollege_data <- filter(HL_data1 , HL_data1$COLLEGE==0)    
+NR_college_data <- filter(NR_data1 ,NR_data1$COLLEGE==1)
+NR_nocollege_data <- filter(NR_data1 , NR_data1$COLLEGE==0)    
+SR_college_data <- filter(SR_data1 , SR_data1$COLLEGE==1)
+SR_nocollege_data <- filter(SR_data1 , SR_data1$COLLEGE==0)    
+
+
+DL_college <- CI(DL_college_data$TOTAL_WTP)
+DL_nocollege <- CI(DL_nocollege_data$TOTAL_WTP)
+HL_college <- CI(HL_college_data$TOTAL_WTP)
+HL_nocollege<- CI(HL_nocollege_data$TOTAL_WTP)
+NR_college <- CI(NR_college_data$TOTAL_WTP)
+NR_nocollege <- CI(NR_nocollege_data$TOTAL_WTP)
+SR_college <- CI(SR_college_data$TOTAL_WTP)
+SR_nocollege <- CI(SR_nocollege_data$TOTAL_WTP)
+
+cbind(DL_nocollege[2],HL_nocollege[2] ,NR_nocollege[2] ,SR_nocollege[2] )
+cbind(DL_college[2],HL_college[2] ,NR_college[2] ,SR_college[2] )
+
+DL_A <- CI(College_data1$DL_WTP)
+DL_B <- CI(Nocollege_data1$DL_WTP)
+HL_A <- CI(College_data1$HL_WTP)
+HL_B <- CI(Nocollege_data1$HL_WTP)
+NR_A <- CI(College_data1$NR_WTP)
+NR_B <- CI(Nocollege_data1$NR_WTP)
+SR_A <- CI(College_data1$SR_WTP)
+SR_B <- CI(Nocollege_data1$SR_WTP)
+
+
+cbind(DL_A[2],HL_A[2] ,NR_A[2] ,SR_A[2] )
+cbind(DL_B[2],HL_B[2] ,NR_B[2] ,SR_B[2] )
+
+
+v11 <- cbind(CI(College_data1$SD_WTP),CI(College_data1$SH_WTP),CI(College_data1$ND_WTP),CI(College_data1$NH_WTP))
+v11[1,]
+
+v12 <- cbind(CI(Nocollege_data1$SD_WTP),CI(Nocollege_data1$SH_WTP),CI(Nocollege_data1$ND_WTP),CI(Nocollege_data1$NH_WTP))
+v12[1,]
+
+c <- list(V1=College_data1$DL_WTP,V2=College_data1$HL_WTP,V3=College_data1$NR_WTP,V4=College_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x <- list(V1=Nocollege_data1$DL_WTP,V2=Nocollege_data1$HL_WTP,V3=Nocollege_data1$NR_WTP,V4=Nocollege_data1$SR_WTP)
+data_2 <- melt(x) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#
+
+x11 <- list(V1=College_data1$DL_WTP,V2= Nocollege_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$HL_WTP,V2= Nocollege_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$NR_WTP,V2= Nocollege_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$SR_WTP,V2= Nocollege_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+```
+
+
+
+#======================================
+# 10. Gamma is '0' ((Appendix- Robustness Check- alternative model specification))
+#================================
+```{r}
+start_conf_212 <- c(1.000000000,0.899707813,-0.050688175,0.049032582,-0.068351431,66.129454362 ,0.298727986,-0.497429151, 0.096457557,0.177094273, 0.183981341, 0.037274983, 0.110442597, 0.027831137, 0.046140956,-0.005611351, 0.007895872, 0.010514645 ,0.044415095, 0.038314679, 0.051803613, 
+  -0.032783232,-7.031067044,42.857309501 ,2.894477072,-8.089847793,-2.864771133 ,0.259882835,-0.253392850, 0.682292893 , 0.131969799, 0.047594221, 0.354799857 
+, 104.843713612, 0.828161185, 0.143205384 ,0.452234933, 0.983897640, 0.297617092,0.023320561, 0.176836349, 0.320310533,0.035100002, 0.070445325, 0.079682374,0.003224953, 0.213889704, 0.142217503 ,0.047062051, 0.044808190,31.753531958 , 64.941444178,69.547865829,87.315295809 ,              2.900000000, 0)
+
+
+
+GMNL_Full_Sample_model_gamma_fixed2 <- gmnl( choice ~ pr+ nu + se + po  + ph + ASC +nu_above55+ nu_female+ nu_college + nu_highincome+se_above55+ se_female+ se_college + se_highincome +po_above55+ po_female+ po_college + po_highincome +ph_above55+ ph_female+ ph_college + ph_highincome+const_above55+ const_female+ const_college + const_highincome| 0 | 0 | 0 |degraded_land +ngo_run_program ,data = data_WTP_space1,
+  model = 'gmnl',
+  R = 1025,
+  fixed = c(TRUE, rep(FALSE,54),TRUE),
+  panel = TRUE,
+  #init.gamma = 0,
+ start = start_conf_212,
+  hgamma = "indirect", # 'direct'= gamma [-inf,+inf], indirect gamma <- [0,1]
+  method="bhhh",
+ #method = "bfgs",
+# subset = c(1:3000),
+  ranp = c(
+    nu = "n",
+    se = "n",
+    po = "n",
+    ph = "n",
+    ASC = "n",
+    nu_above55 = "n",
+    nu_female = "n",
+    nu_college ="n",
+    nu_highincome ="n",
+    se_above55 = "n",
+    se_female = "n",
+    se_college ="n",
+    se_highincome ="n",
+    po_above55 = "n",
+    po_female = "n",
+    po_college ="n",
+    po_highincome ="n",
+    ph_above55 = "n",
+    ph_female = "n",
+    ph_college ="n",
+    ph_highincome ="n",
+    const_above55 = "n",
+    const_female = "n",
+    const_college ="n",
+    const_highincome ="n"),
+  correlation = FALSE,
+  seed = 1105,
+  print.init = TRUE,
+  print.level = 3,
+  iterlim = 500,
+ typeR = TRUE,
+  notscale = c(0,rep(0,24),0),
+   haltons = list("primes" = c(2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97), "drop" = rep(97, 25))
+ )
+
+summary(GMNL_Full_Sample_model_gamma_fixed2)
+BIC(GMNL_Full_Sample_model_gamma_fixed2)
+AIC(GMNL_Full_Sample_model_gamma_fixed2)
+BIC(GMNL_Full_Sample_model)
+AIC(GMNL_Full_Sample_model)
+
+save(GMNL_Full_Sample_model_gamma_fixed2,file="GMNL_Full_Sample_model_gamma_fixed2.rdata")
+
+
+summary(GMNL_Full_Sample_model_gamma_fixed2)
+var_list <- c("nu","se","po","ph","ASC",  "nu_above55" , "nu_female" , "nu_college" , "nu_highincome" ,"se_above55" , "se_female" ,"se_college" ,
+    "se_highincome" ,"po_above55" ,"po_female" ,"po_college" ,
+    "po_highincome" ,"ph_above55" ,"ph_female" ,"ph_college" ,
+    "ph_highincome" ,"const_above55" ,"const_female" , "const_college" ,"const_highincome"  )
+
+id_list <- data_WTP_space1$id %>% unique() 
+length(id_list)
+
+
+#GMNL_scale_model_final <- GMNL_scale_model_10
+(coef_data<- effect.gmnl(GMNL_Full_Sample_model_gamma_fixed2, par = var_list, effect = "ce")[[1]] %>% data.frame()%>% mutate(id=id_list))
+
+summary(coef_data)
+
+#coef_data <- coef_data[5:9]
+# coef_data <- coef_data  %>% dplyr::rename(nu=ASC,se=Age,ph=College, po=Female,ASC=Highincome, Age_coef=nu,Female_coef=se,College_coef=po, Highincome_coef=ph) %>% data.frame() %>% mutate(id=id_list)
+
+summary(coef_data)
+
+coefs_all <- GMNL_Full_Sample_model_gamma_fixed2$coefficients
+
+summary(coef_data)
+
+#<!---------------------------------->
+## create unique charecter and policy values
+#<!---------------------------------->
+
+data_frame_WTP <- data_WTP_space1 %>% data.frame()
+distinct_data <- dplyr::distinct(data_frame_WTP,id, .keep_all =TRUE) %>% data.frame()
+
+distinct_data <- distinct_data %>% mutate(distinct_data, STATE_DEG =distinct_data$state_deg, STATE_HIST =distinct_data$state_hist, NGO_DEG =distinct_data$ngo_deg, NGO_HIST=distinct_data$ngo_hist, AGE= distinct_data$Age,FEMALE= distinct_data$Female, HIGHINCOME= distinct_data$Highincome, COLLEGE= distinct_data$College, AGEABOVE55= distinct_data$age_above55,STATE_RUN=distinct_data$State_run,NGO_RUN=ngo_run_program, DEG_LAND = degraded_land,HIST_LAND =historical_managed_land  )
+
+distinct_data2 <- dplyr::select(distinct_data,id,STATE_DEG,STATE_HIST,NGO_DEG,NGO_HIST,AGE, FEMALE, HIGHINCOME, COLLEGE, AGEABOVE55,NoCollege, Lowincome,Male, age_below55,Male2,STATE_RUN, NGO_RUN,STATE_RUN, DEG_LAND,HIST_LAND) %>% data.frame()
+dim(distinct_data2)
+
+library(data.table)
+  
+  
+final_coefs <- dplyr::left_join(coef_data,distinct_data2 , by = 'id') %>% data.frame() %>% data.table()
+class(final_coefs)
+names(final_coefs)
+
+(prcoef_All <-
+  -exp(
+    coef(GMNL_Full_Sample_model_gamma_fixed2)["het.(Intercept)"]
+    +
+      rep(coef(GMNL_Full_Sample_model_gamma_fixed2)["het.degraded_land"],1200) *distinct_data2$DEG_LAND + rep(coef(GMNL_Full_Sample_model_gamma_fixed2)["het.ngo_run_program"],1200)*distinct_data2$NGO_RUN))
+
+final_coefs1 <- cbind(final_coefs[,1:25]/-prcoef_All,final_coefs[,26:44])
+
+
+final_coefs2 <- final_coefs1[, ":="(NU = nu + nu_above55 *AGEABOVE55 + nu_female *FEMALE + nu_college *COLLEGE +nu_highincome*HIGHINCOME,SE = se + se_above55 *AGEABOVE55 + se_female *FEMALE + se_college *COLLEGE +se_highincome*HIGHINCOME,PO = po + po_above55 *AGEABOVE55 + po_female *FEMALE + po_college *COLLEGE +po_highincome*HIGHINCOME,PH = ph + ph_above55 *AGEABOVE55 + ph_female *FEMALE + ph_college *COLLEGE +ph_highincome*HIGHINCOME,ASC1 = ASC + const_above55 *AGEABOVE55 + const_female *FEMALE + const_college *COLLEGE +const_highincome*HIGHINCOME )]
+names(final_coefs2)
+final_coefs2$NU
+
+final_coefs2 <- final_coefs2[, ':='(TOTAL_WTP= NU*75 +SE*95 + PO*300 + PH*100 + ASC1, NU_WTP =NU*75,SE_WTP=SE*95,PO_WTP=PO*300,PH_WTP=PH*100)]
+names(final_coefs2)
+final_coefs2$TOTAL_WTP
+summary(final_coefs2$TOTAL_WTP)
+
+(DL_data1 = filter(final_coefs2,final_coefs2$DEG_LAND==1))
+(HL_data1 = filter(final_coefs2,final_coefs2$HIST_LAND ==1))
+(NR_data1 = filter(final_coefs2,final_coefs2$NGO_RUN ==1))
+(SR_data1 = filter(final_coefs2,final_coefs2$STATE_RUN ==1))
+
+summary(DL_data1$TOTAL_WTP)
+summary(HL_data1$TOTAL_WTP)
+summary(NR_data1$TOTAL_WTP)
+summary(SR_data1$TOTAL_WTP)
+
+a<- c(1,2,3)
+b <- c(10,11,12)
+c <- c(10,101,102)
+d <- c("yes","no","no")
+
+datacheck<- cbind(a,b,c,d) %>% data.frame()
+data111 <- filter(datacheck,datacheck$d=="yes")
+
+
+
+(col <- DL_data1 %>%
+  group_by(HIGHINCOME) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+dim(data_WTP_space1)
+
+( age <- my_data_final %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(f <- DL_data1 %>%
+  group_by(Female) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+(inc <- DL_data1 %>%
+  group_by(Highincome) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 6)) %>% 
+  arrange(desc(freq)))
+
+head(as.data.frame(g))
+
+(g <- DL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- HL_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- NR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+(g <- SR_data1 %>%
+  group_by(COLLEGE) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = round(cnt / sum(cnt), 3)) %>% 
+  arrange(desc(freq)))
+
+library("plyr")
+count(DL_data1, 'COLLEGE','FEMALE')
+
+library(tidyverse)
+library(Rmisc)
+
+# Nu coefficients
+DL_NU <- CI(DL_data1$NU)
+HL_NU <- CI(HL_data1$NU)
+NR_NU <- CI(NR_data1$NU)
+SR_NU <- CI(SR_data1$NU)
+
+cbind(DL_NU[2],HL_NU[2] ,NR_NU[2] ,SR_NU[2] )
+
+paste("[",round(DL_NU[3],3),",",round(DL_NU[1],3),"]","&","[",round(HL_NU[3],3),",",round(HL_NU[1],3),"]","&","[",round(NR_NU[3],3) ,",",round(NR_NU[1],3),"]","&","[",round(SR_NU[3],3),",",round(SR_NU[1],3),"]" )
+
+DL_NU_WTP <- CI(DL_data1$NU_WTP)
+HL_NU_WTP <- CI(HL_data1$NU_WTP)
+NR_NU_WTP <- CI(NR_data1$NU_WTP)
+SR_NU_WTP <- CI(SR_data1$NU_WTP)
+
+paste(round(DL_NU_WTP[2],2),'&',round(HL_NU_WTP[2],2) ,'&',round(NR_NU_WTP[2],2),'&',round(SR_NU_WTP[2],2) )
+
+paste("[",round(DL_NU_WTP[3],2),",",round(DL_NU_WTP[1],2),"]","&","[",round(HL_NU_WTP[3],2),",",round(HL_NU_WTP[1],2),"]","&","[",round(NR_NU_WTP[3],2) ,",",round(NR_NU_WTP[1],2),"]","&","[",round(SR_NU_WTP[3],2),",",round(SR_NU_WTP[1],2),"]" )
+
+
+# Se coefficients
+
+DL_SE <- CI(DL_data1$SE)
+HL_SE <- CI(HL_data1$SE)
+NR_SE <- CI(NR_data1$SE)
+SR_SE <- CI(SR_data1$SE)
+
+cbind(DL_SE[2],HL_SE[2] ,NR_SE[2] ,SR_SE[2] )
+paste("(",round(DL_SE[3],3),",",round(DL_SE[1],3),")","&","(",round(HL_SE[3],3),",",round(HL_SE[1],3),")","&","(",round(NR_SE[3],3) ,",",round(NR_SE[1],3),")","&","(",round(SR_SE[3],3),",",round(SR_SE[1],3),")" )
+
+
+DL_SE_WTP <- CI(DL_data1$SE_WTP)
+HL_SE_WTP <- CI(HL_data1$SE_WTP)
+NR_SE_WTP <- CI(NR_data1$SE_WTP)
+SR_SE_WTP <- CI(SR_data1$SE_WTP)
+
+paste(round(DL_SE_WTP[2],2),'&',round(HL_SE_WTP[2],2) ,'&',round(NR_SE_WTP[2],2),'&',round(SR_SE_WTP[2],2) )
+
+paste("[",round(DL_SE_WTP[3],2),",",round(DL_SE_WTP[1],2),"]","&","[",round(HL_SE_WTP[3],2),",",round(HL_SE_WTP[1],2),"]","&","[",round(NR_SE_WTP[3],2) ,",",round(NR_SE_WTP[1],2),"]","&","[",round(SR_SE_WTP[3],2),",",round(SR_SE_WTP[1],2),"]" )
+
+
+# po coefficients
+
+DL_PO <- CI(DL_data1$PO)
+HL_PO <- CI(HL_data1$PO)
+NR_PO <- CI(NR_data1$PO)
+SR_PO <- CI(SR_data1$PO)
+
+cbind(DL_PO[2],HL_PO[2] ,NR_PO[2] ,SR_PO[2] )
+
+paste("(",round(DL_PO[3],3),",",round(DL_PO[1],3),")","&","(",round(HL_PO[3],3),",",round(HL_PO[1],3),")","&","(",round(NR_PO[3],3) ,",",round(NR_PO[1],3),")","&","(",round(SR_PO[3],3),",",round(SR_PO[1],3),")" )
+
+DL_PO_WTP <- CI(DL_data1$PO_WTP)
+HL_PO_WTP <- CI(HL_data1$PO_WTP)
+NR_PO_WTP <- CI(NR_data1$PO_WTP)
+SR_PO_WTP <- CI(SR_data1$PO_WTP)
+
+paste(round(DL_PO_WTP[2],2),'&',round(HL_PO_WTP[2],2) ,'&',round(NR_PO_WTP[2],2),'&',round(SR_PO_WTP[2],2) )
+
+paste("[",round(DL_PO_WTP[3],2),",",round(DL_PO_WTP[1],2),"]","&","[",round(HL_PO_WTP[3],2),",",round(HL_PO_WTP[1],2),"]","&","[",round(NR_PO_WTP[3],2) ,",",round(NR_PO_WTP[1],2),"]","&","[",round(SR_PO_WTP[3],2),",",round(SR_PO_WTP[1],2),"]" )
+
+
+# Ph coeficcients
+DL_PH <- CI(DL_data1$PH)
+HL_PH <- CI(HL_data1$PH)
+NR_PH <- CI(NR_data1$PH)
+SR_PH <- CI(SR_data1$PH)
+
+cbind(DL_PH[2],HL_PH[2] ,NR_PH[2] ,SR_PH[2] )
+paste("(",round(DL_PH[3],3),",",round(DL_PH[1],3),")","&","(",round(HL_PH[3],3),",",round(HL_PH[1],3),")","&","(",round(NR_PH[3],3) ,",",round(NR_PH[1],3),")","&","(",round(SR_PH[3],3),",",round(SR_PH[1],3),")" )
+
+
+DL_PH_WTP <- CI(DL_data1$PH_WTP)
+HL_PH_WTP <- CI(HL_data1$PH_WTP)
+NR_PH_WTP <- CI(NR_data1$PH_WTP)
+SR_PH_WTP <- CI(SR_data1$PH_WTP)
+
+paste(round(DL_PH_WTP[2],2),'&',round(HL_PH_WTP[2],2) ,'&',round(NR_PH_WTP[2],2),'&',round(SR_PH_WTP[2],2) )
+
+paste("[",round(DL_PH_WTP[3],2),",",round(DL_PH_WTP[1],2),"]","&","[",round(HL_PH_WTP[3],2),",",round(HL_PH_WTP[1],2),"]","&","[",round(NR_PH_WTP[3],2) ,",",round(NR_PH_WTP[1],2),"]","&","[",round(SR_PH_WTP[3],2),",",round(SR_PH_WTP[1],2),"]" )
+
+
+
+# ASC coefficients
+
+DL_ASC <- CI(DL_data1$ASC1)
+HL_ASC <- CI(HL_data1$ASC1)
+NR_ASC <- CI(NR_data1$ASC1)
+SR_ASC <- CI(SR_data1$ASC1)
+
+cbind(DL_ASC[2],HL_ASC[2] ,NR_ASC[2] ,SR_ASC[2] )
+cbind(DL_ASC[3],DL_ASC[1],HL_ASC[3] ,HL_ASC[1],NR_ASC[3] ,NR_ASC[1],SR_ASC[3],SR_ASC[1] )
+
+paste("[",round(DL_ASC[3],2),",",round(DL_ASC[1],2),"]","&","[",round(HL_ASC[3],2),",",round(HL_ASC[1],2),"]","&","[",round(NR_ASC[3],2) ,",",round(NR_ASC[1],2),"]","&","[",round(SR_ASC[3],2),",",round(SR_ASC[1],2),"]" )
+
+# Overall WTP coefficietns
+DL_WTP <- CI(DL_data1$TOTAL_WTP)
+HL_WTP <- CI(HL_data1$TOTAL_WTP)
+NR_WTP <- CI(NR_data1$TOTAL_WTP)
+SR_WTP<- CI(SR_data1$TOTAL_WTP )
+
+cbind(DL_ALL[2],HL_ALL[2] ,NR_ALL[2] ,SR_ALL[2] )
+cbind(DL_WTP[2],HL_WTP[2] ,NR_WTP[2] ,SR_WTP[2] )
+
+paste(round(DL_WTP[2],3),"&",round(HL_WTP[2],3),"&",round(NR_WTP[2],3) ,"&",round(SR_WTP[2],3))
+
+paste("[",round(DL_WTP[3],2),",",round(DL_WTP[1],2),"]","&","[",round(HL_WTP[3],2),",",round(HL_WTP[1],2),"]","&","[",round(NR_WTP[3],2) ,",",round(NR_WTP[1],2),"]","&","[",round(SR_WTP[3],2),",",round(SR_WTP[1],2),"]" )
+
+cbind(DL_WTP[3],DL_WTP[1],HL_WTP[3] ,HL_WTP[1],NR_WTP[3] ,NR_WTP[1],SR_WTP[3],SR_WTP[1] )
+
+All_data <- cbind (DL_ALL= (DL_data1$NU*75 +DL_data1$SE*90 + DL_data1$PO*300 + DL_data1$PH*100 + DL_data1$ASC1 ),
+HL_ALL = (HL_data1$NU*75 +HL_data1$SE*90 + HL_data1$PO*300 + HL_data1$PH*100 + HL_data1$ASC1),
+NR_ALL = (NR_data1$NU*75 +NR_data1$SE*90 + NR_data1$PO*300 + NR_data1$PH*100 + NR_data1$ASC1),
+SR_ALL = (SR_data1$NU*75 +SR_data1$SE*90 + SR_data1$PO*300 + SR_data1$PH*100 + SR_data1$ASC1)) %>% data.frame()
+
+summary(All_data)
+
+dim(final_coefs)
+
+cbind(mean(DL_data1$NU*75),mean(HL_data1$NU*75),mean(NR_data1$NU*75),mean(SR_data1$NU*75))
+cbind(mean(DL_data1$SE*90),mean(HL_data1$SE*90),mean(NR_data1$SE*90),mean(SR_data1$SE*90))
+
+cbind(mean(DL_data1$PO*300),mean(HL_data1$PO*300),mean(NR_data1$PO*300),mean(SR_data1$PO*300))
+
+cbind(mean(DL_data1$PH*100),mean(HL_data1$PH*100),mean(NR_data1$PH*100),mean(SR_data1$PH*100))
+
+dim(final_coefs)
+
+
+library(tidyverse)
+library(reshape2)
+names(coef_data3)
+names(coef_data33)
+
+c <- list(V1=DL_data1$NU,V2=HL_data1$NU,V3=NR_data1$NU,V4=SR_data1$NU)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$SE,V2=HL_data1$SE,V3=NR_data1$SE,V4=SR_data1$SE)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=DL_data1$PO,V2=HL_data1$PO,V3=NR_data1$PO,V4=SR_data1$PO)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$PH,V2=HL_data1$PH,V3=NR_data1$PH,V4=SR_data1$PH)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=DL_data1$ASC1,V2=HL_data1$ASC1,V3=NR_data1$ASC1,V4=SR_data1$ASC1)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+ct <- list(V1=DL_data1$TOTAL_WTP,V2=HL_data1$TOTAL_WTP,V3=NR_data1$TOTAL_WTP,V4=SR_data1$TOTAL_WTP)
+
+data_2 <- melt(ct) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+# socioeconomic
+# female  and male
+
+DL_male_data <- filter(DL_data1 , DL_data1$Male==1)
+DL_female_data <- filter(DL_data1 , DL_data1$Male==0)  
+HL_male_data <- filter(HL_data1 , HL_data1$Male==1)
+HL_female_data <- filter(HL_data1 , HL_data1$Male==0)    
+NR_male_data <- filter(NR_data1 ,NR_data1$Male==1)
+NR_female_data <- filter(NR_data1 , NR_data1$Male==0)    
+SR_male_data <- filter(SR_data1 , SR_data1$Male==1)
+SR_female_data <- filter(SR_data1 , SR_data1$Male==0)    
+
+
+DL_male <- CI(DL_male_data$TOTAL_WTP)
+DL_female <- CI(DL_female_data$TOTAL_WTP)
+HL_male <- CI(HL_male_data$TOTAL_WTP)
+HL_female<- CI(HL_female_data$TOTAL_WTP)
+NR_male <- CI(NR_male_data$TOTAL_WTP)
+NR_female <- CI(NR_female_data$TOTAL_WTP)
+SR_male <- CI(SR_male_data$TOTAL_WTP)
+SR_female <- CI(SR_female_data$TOTAL_WTP)
+
+cbind(DL_female[2],HL_female[2] ,NR_female[2] ,SR_female[2] )
+cbind(DL_male[2],HL_male[2] ,NR_male[2] ,SR_male[2] )
+
+c <- list(V1=Female_data1$DL_WTP,V2=Female_data1$HL_WTP,V3=Female_data1$NR_WTP,V4=Female_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Male_data1$DL_WTP,V2=Male_data1$HL_WTP,V3=Male_data1$NR_WTP,V4=Male_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+c <- list(V1=Female_data1$DL_WTP,V2= Male_data1$DL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Female_data1$HL_WTP,V2= Male_data1$HL_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+c <- list(V1=Female_data1$NR_WTP,V2= Male_data1$NR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+c <- list(V1=Female_data1$SR_WTP,V2= Male_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#highincome_lowincome
+
+DL_highincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==1)
+DL_lowincome_data <- filter(DL_data1 , DL_data1$HIGHINCOME==0)  
+HL_highincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==1)
+HL_lowincome_data <- filter(HL_data1 , HL_data1$HIGHINCOME==0)    
+NR_highincome_data <- filter(NR_data1 ,NR_data1$HIGHINCOME==1)
+NR_lowincome_data <- filter(NR_data1 , NR_data1$HIGHINCOME==0)    
+SR_highincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==1)
+SR_lowincome_data <- filter(SR_data1 , SR_data1$HIGHINCOME==0)    
+
+
+DL_highincome <- CI(DL_highincome_data$TOTAL_WTP)
+DL_lowincome <- CI(DL_lowincome_data$TOTAL_WTP)
+HL_highincome <- CI(HL_highincome_data$TOTAL_WTP)
+HL_lowincome<- CI(HL_lowincome_data$TOTAL_WTP)
+NR_highincome <- CI(NR_highincome_data$TOTAL_WTP)
+NR_lowincome <- CI(NR_lowincome_data$TOTAL_WTP)
+SR_highincome <- CI(SR_highincome_data$TOTAL_WTP)
+SR_lowincome <- CI(SR_lowincome_data$TOTAL_WTP)
+
+cbind(DL_lowincome[2],HL_lowincome[2] ,NR_lowincome[2] ,SR_lowincome[2] )
+cbind(DL_highincome[2],HL_highincome[2] ,NR_highincome[2] ,SR_highincome[2] )
+
+
+
+
+b <- list(V1=Highincome_data1$DL_WTP,V2=Highincome_data1$HL_WTP,V3=Highincome_data1$NR_WTP,V4=Highincome_data1$SR_WTP)
+data_2 <- melt(b) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+c <- list(V1=Lowincome_data1$DL_WTP,V2=Lowincome_data1$HL_WTP,V3=Lowincome_data1$NR_WTP,V4=Lowincome_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+
+
+x11 <- list(V1=Highincome_data1$DL_WTP,V2= Lowincome_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Highincome_data1$HL_WTP,V2= Lowincome_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+x11 <- list(V1=Highincome_data1$NR_WTP,V2= Lowincome_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Highincome_data1$SR_WTP,V2= Lowincome_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+# age above and below
+Ageabove_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==1)
+Agebelow_data1 = filter(coef_data33,coef_data33$AGEABOVE55 ==0) 
+
+DL_old_data <- filter(DL_data1 , DL_data1$AGEABOVE55==1)
+DL_young_data <- filter(DL_data1 , DL_data1$AGEABOVE55==0)  
+HL_old_data <- filter(HL_data1 , HL_data1$AGEABOVE55==1)
+HL_young_data <- filter(HL_data1 , HL_data1$AGEABOVE55==0)    
+NR_old_data <- filter(NR_data1 ,NR_data1$AGEABOVE55==1)
+NR_young_data <- filter(NR_data1 , NR_data1$AGEABOVE55==0)    
+SR_old_data <- filter(SR_data1 , SR_data1$AGEABOVE55==1)
+SR_young_data <- filter(SR_data1 , SR_data1$AGEABOVE55==0)    
+
+
+DL_old <- CI(DL_old_data$TOTAL_WTP)
+DL_young <- CI(DL_young_data$TOTAL_WTP)
+HL_old <- CI(HL_old_data$TOTAL_WTP)
+HL_young<- CI(HL_young_data$TOTAL_WTP)
+NR_old <- CI(NR_old_data$TOTAL_WTP)
+NR_young <- CI(NR_young_data$TOTAL_WTP)
+SR_old <- CI(SR_old_data$TOTAL_WTP)
+SR_young <- CI(SR_young_data$TOTAL_WTP)
+
+cbind(DL_young[2],HL_young[2] ,NR_young[2] ,SR_young[2] )
+cbind(DL_old[2],HL_old[2] ,NR_old[2] ,SR_old[2] )
+
+
+v11 <- cbind(CI(Ageabove_data1$DL_WTP),CI(Ageabove_data1$HL_WTP),CI(Ageabove_data1$NR_WTP),CI(Ageabove_data1$SR_WTP))
+v11[1,]
+
+v12 <- cbind(CI(Agebelow_data1$DL_WTP),CI(Agebelow_data1$HL_WTP),CI(Agebelow_data1$NR_WTP),CI(Agebelow_data1$SR_WTP))
+v12[1,]
+
+m2 <- list(V1=Ageabove_data1$DL_WTP,V2=Ageabove_data1$HL_WTP,V3=Ageabove_data1$NR_WTP,V4=Ageabove_data1$SR_WTP)
+data_2 <- melt(m2) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+xx <- list(V1=Agebelow_data1$DL_WTP,V2=Agebelow_data1$HL_WTP,V3=Agebelow_data1$NR_WTP,V4=Agebelow_data1$SR_WTP)
+data_2 <- melt(xx) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+#
+
+x11 <- list(V1=Ageabove_data1$DL_WTP,V2= Agebelow_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$HL_WTP,V2= Agebelow_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$NR_WTP,V2= Agebelow_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=Ageabove_data1$SR_WTP,V2= Agebelow_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+# college vs no college
+
+
+
+DL_college_data <- filter(DL_data1 , DL_data1$COLLEGE==1)
+DL_nocollege_data <- filter(DL_data1 , DL_data1$COLLEGE==0)  
+HL_college_data <- filter(HL_data1 , HL_data1$COLLEGE==1)
+HL_nocollege_data <- filter(HL_data1 , HL_data1$COLLEGE==0)    
+NR_college_data <- filter(NR_data1 ,NR_data1$COLLEGE==1)
+NR_nocollege_data <- filter(NR_data1 , NR_data1$COLLEGE==0)    
+SR_college_data <- filter(SR_data1 , SR_data1$COLLEGE==1)
+SR_nocollege_data <- filter(SR_data1 , SR_data1$COLLEGE==0)    
+
+
+DL_college <- CI(DL_college_data$TOTAL_WTP)
+DL_nocollege <- CI(DL_nocollege_data$TOTAL_WTP)
+HL_college <- CI(HL_college_data$TOTAL_WTP)
+HL_nocollege<- CI(HL_nocollege_data$TOTAL_WTP)
+NR_college <- CI(NR_college_data$TOTAL_WTP)
+NR_nocollege <- CI(NR_nocollege_data$TOTAL_WTP)
+SR_college <- CI(SR_college_data$TOTAL_WTP)
+SR_nocollege <- CI(SR_nocollege_data$TOTAL_WTP)
+
+cbind(DL_nocollege[2],HL_nocollege[2] ,NR_nocollege[2] ,SR_nocollege[2] )
+cbind(DL_college[2],HL_college[2] ,NR_college[2] ,SR_college[2] )
+
+DL_A <- CI(College_data1$DL_WTP)
+DL_B <- CI(Nocollege_data1$DL_WTP)
+HL_A <- CI(College_data1$HL_WTP)
+HL_B <- CI(Nocollege_data1$HL_WTP)
+NR_A <- CI(College_data1$NR_WTP)
+NR_B <- CI(Nocollege_data1$NR_WTP)
+SR_A <- CI(College_data1$SR_WTP)
+SR_B <- CI(Nocollege_data1$SR_WTP)
+
+
+cbind(DL_A[2],HL_A[2] ,NR_A[2] ,SR_A[2] )
+cbind(DL_B[2],HL_B[2] ,NR_B[2] ,SR_B[2] )
+
+
+v11 <- cbind(CI(College_data1$SD_WTP),CI(College_data1$SH_WTP),CI(College_data1$ND_WTP),CI(College_data1$NH_WTP))
+v11[1,]
+
+v12 <- cbind(CI(Nocollege_data1$SD_WTP),CI(Nocollege_data1$SH_WTP),CI(Nocollege_data1$ND_WTP),CI(Nocollege_data1$NH_WTP))
+v12[1,]
+
+c <- list(V1=College_data1$DL_WTP,V2=College_data1$HL_WTP,V3=College_data1$NR_WTP,V4=College_data1$SR_WTP)
+data_2 <- melt(c) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x <- list(V1=Nocollege_data1$DL_WTP,V2=Nocollege_data1$HL_WTP,V3=Nocollege_data1$NR_WTP,V4=Nocollege_data1$SR_WTP)
+data_2 <- melt(x) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+
+#
+
+x11 <- list(V1=College_data1$DL_WTP,V2= Nocollege_data1$DL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$HL_WTP,V2= Nocollege_data1$HL_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$NR_WTP,V2= Nocollege_data1$NR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+x11 <- list(V1=College_data1$SR_WTP,V2= Nocollege_data1$SR_WTP)
+data_2 <- melt(x11) %>% data.frame()
+pairwise.t.test(data_2$value, data_2$L1, p.adj = "none")
+
+```
